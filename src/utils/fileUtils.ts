@@ -39,6 +39,14 @@ const DEFAULT_CONFIG: Omit<ResolvedGlobalyzeConfig, "rootDir" | "sourceDir" | "l
     lingoApiUrl: undefined
   };
 
+function quoteString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function formatStringArray(values: readonly string[]): string {
+  return `[${values.map((value) => quoteString(value)).join(", ")}]`;
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -177,16 +185,75 @@ export async function writeJsonFile(
   await fs.writeFile(filePath, `${JSON.stringify(sorted, null, 2)}\n`, "utf8");
 }
 
-export function createDefaultConfigContents(): string {
+export function normalizeLanguageCodes(
+  input: readonly string[],
+  sourceLocale = DEFAULT_CONFIG.sourceLocale
+): string[] {
+  const languages = input
+    .flatMap((value) => value.split(","))
+    .map((value) => value.trim().toLowerCase())
+    .filter(Boolean);
+
+  const uniqueLanguages = [...new Set(languages)];
+
+  if (!uniqueLanguages.includes(sourceLocale)) {
+    uniqueLanguages.unshift(sourceLocale);
+  }
+
+  return uniqueLanguages;
+}
+
+export function createDefaultConfigContents(
+  languages: readonly string[] = DEFAULT_CONFIG.languages
+): string {
   return [
     "export default {",
     '  sourceDir: "src",',
     '  localesDir: "locales",',
-    '  languages: ["en", "ar", "fr", "de"],',
-    '  ignore: ["node_modules", "dist", "build", ".next", ".git"]',
+    `  languages: ${formatStringArray(languages)},`,
+    `  ignore: ${formatStringArray(DEFAULT_IGNORE)}`,
     "};",
     ""
   ].join("\n");
+}
+
+export function createConfigContents(
+  config: Pick<
+    ResolvedGlobalyzeConfig,
+    | "rootDir"
+    | "sourceDir"
+    | "localesDir"
+    | "languages"
+    | "ignore"
+    | "sourceLocale"
+    | "aiModel"
+    | "aiBatchSize"
+    | "translationImportPath"
+    | "translationFunctionName"
+    | "lingoApiUrl"
+  >
+): string {
+  const relativeSourceDir = toRelativePosixPath(config.rootDir, config.sourceDir);
+  const relativeLocalesDir = toRelativePosixPath(config.rootDir, config.localesDir);
+  const lines = [
+    "export default {",
+    `  sourceDir: ${quoteString(relativeSourceDir)},`,
+    `  localesDir: ${quoteString(relativeLocalesDir)},`,
+    `  languages: ${formatStringArray(config.languages)},`,
+    `  ignore: ${formatStringArray(config.ignore)},`,
+    `  sourceLocale: ${quoteString(config.sourceLocale)},`,
+    `  aiModel: ${quoteString(config.aiModel)},`,
+    `  aiBatchSize: ${String(config.aiBatchSize)},`,
+    `  translationImportPath: ${quoteString(config.translationImportPath)},`,
+    `  translationFunctionName: ${quoteString(config.translationFunctionName)},`,
+    ...(config.lingoApiUrl
+      ? [`  lingoApiUrl: ${quoteString(config.lingoApiUrl)},`]
+      : []),
+    "};",
+    ""
+  ];
+
+  return lines.join("\n");
 }
 
 export function resolveGlobalyzeRootDir(): string {

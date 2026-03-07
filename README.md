@@ -125,6 +125,14 @@ globalyze init
 
 This creates `globalyze.config.ts`.
 
+To customize the initial language set:
+
+```bash
+globalyze init --langs de,fr
+```
+
+That generates a config with `["en", "de", "fr"]`.
+
 ### 2. Scan for hardcoded strings
 
 ```bash
@@ -188,6 +196,32 @@ Creates `globalyze.config.ts` in the current directory.
 Options:
 
 - `-f, --force` overwrite an existing config file
+- `--langs <codes>` replace the default language list at initialization time
+
+Examples:
+
+```bash
+globalyze init
+globalyze init --langs de,fr
+```
+
+### `globalyze add <codes...>`
+
+Adds one or more languages to an existing project config from the CLI.
+
+```bash
+globalyze add tr es
+```
+
+What it does:
+
+- updates `globalyze.config.ts`
+- syncs locale files for the new languages
+- translates the new locale files if source keys already exist
+
+Options:
+
+- `-c, --config <path>`
 
 ### `globalyze scan`
 

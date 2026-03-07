@@ -16,6 +16,7 @@ import { executeTransformCommand } from "../commands/transform";
 import { executeTranslateCommand } from "../commands/translate";
 import { executePreviewCommand } from "../commands/preview";
 import { executeWatchCommand } from "../commands/watch";
+import { executeAddLanguagesCommand } from "../commands/languages";
 
 export async function launchInteractiveCLI(): Promise<void> {
   intro("🌍 Globalyze — Automatic App Localization");
@@ -24,6 +25,7 @@ export async function launchInteractiveCLI(): Promise<void> {
     message: "Select an action",
     options: [
       { label: "Scan project for strings", value: "scan" },
+      { label: "Add languages to config", value: "languages" },
       { label: "Preview transformations", value: "preview" },
       { label: "Transform source code", value: "transform" },
       { label: "Generate translations", value: "translate" },
@@ -47,6 +49,19 @@ export async function launchInteractiveCLI(): Promise<void> {
 
   if (action === "scan") {
     await executeScanCommand();
+  }
+
+  if (action === "languages") {
+    const codes = await text({
+      message: "Language codes to add (comma separated)"
+    });
+
+    if (isCancel(codes) || codes.trim().length === 0) {
+      cancel("Language update cancelled.");
+      return;
+    }
+
+    await executeAddLanguagesCommand(codes.split(","));
   }
 
   if (action === "transform") {
