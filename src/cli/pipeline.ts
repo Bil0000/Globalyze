@@ -85,7 +85,8 @@ export async function prepareTransformProject(
   }
 
   const keyResult = await generateSemanticKeys(keySourceStrings, {
-    model: config.aiModel,
+    model: config.openAiModel,
+    geminiModel: config.geminiModel,
     batchSize: config.aiBatchSize,
     existingLocale: existingSourceLocale
   });

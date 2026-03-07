@@ -11,7 +11,8 @@ export interface GlobalyzeConfig {
   languages: string[];
   ignore?: string[];
   sourceLocale?: string;
-  aiModel?: string;
+  openAiModel?: string;
+  geminiModel?: string;
   aiBatchSize?: number;
   translationImportPath?: string;
   translationFunctionName?: string;
@@ -25,7 +26,8 @@ export interface ResolvedGlobalyzeConfig {
   languages: string[];
   ignore: string[];
   sourceLocale: string;
-  aiModel: string;
+  openAiModel: string;
+  geminiModel: string;
   aiBatchSize: number;
   translationImportPath: string;
   translationFunctionName: string;

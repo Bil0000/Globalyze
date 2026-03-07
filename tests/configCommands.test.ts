@@ -35,7 +35,18 @@ describe("config commands", () => {
       "utf8"
     );
 
+    expect(contents).toContain('sourceDir: "src"');
+    expect(contents).toContain('localesDir: "locales"');
     expect(contents).toContain('languages: ["en", "de", "fr"]');
+    expect(contents).toContain(
+      'ignore: ["node_modules", "dist", "build", ".next", ".git"],'
+    );
+    expect(contents).toContain('sourceLocale: "en"');
+    expect(contents).toContain('openAiModel: "gpt-4o-mini"');
+    expect(contents).toContain('geminiModel: "gemini-2.5-flash-lite"');
+    expect(contents).toContain("aiBatchSize: 20");
+    expect(contents).toContain('translationImportPath: "@/i18n"');
+    expect(contents).toContain('translationFunctionName: "t"');
   });
 
   it("adds languages from the CLI and creates translated locale files", async () => {

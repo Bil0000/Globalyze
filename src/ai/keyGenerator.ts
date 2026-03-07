@@ -321,11 +321,12 @@ function extractGeminiText(value: unknown): string {
 
 async function generateBatchWithGemini(
   apiKey: string,
+  model: string,
   batch: readonly KeyGenerationCandidate[],
   fetchImpl: typeof fetch = fetch
 ): Promise<Map<string, string>> {
   const response = await fetchImpl(
-    `${GEMINI_API_URL}/${GEMINI_FALLBACK_MODEL}:generateContent`,
+    `${GEMINI_API_URL}/${model}:generateContent`,
     {
       method: "POST",
       headers: {
@@ -365,6 +366,7 @@ export async function generateSemanticKeys(
   options: {
     apiKey?: string;
     model?: string;
+    geminiModel?: string;
     batchSize?: number;
     existingLocale?: LocaleDictionary;
     openAIClient?: OpenAIKeyGenerationClient;
@@ -378,6 +380,7 @@ export async function generateSemanticKeys(
   const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
   const geminiApiKey = process.env.GEMINI_API_KEY;
   const model = options.model ?? "gpt-4o-mini";
+  const geminiModel = options.geminiModel ?? GEMINI_FALLBACK_MODEL;
   const batchSize = options.batchSize ?? 20;
   let usedFallback = false;
   let fallbackReason: string | undefined;
@@ -465,6 +468,7 @@ export async function generateSemanticKeys(
         try {
           const generated = await generateBatchWithGemini(
             geminiApiKey,
+            geminiModel,
             batch,
             options.fetchImpl
           );

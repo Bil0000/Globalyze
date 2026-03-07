@@ -340,7 +340,8 @@ export default {
   languages: ["en", "ar", "fr", "de"],
   ignore: ["node_modules", "dist", "build", ".next", ".git"],
   sourceLocale: "en",
-  aiModel: "gpt-4o-mini",
+  openAiModel: "gpt-4o-mini",
+  geminiModel: "gemini-2.5-flash-lite",
   aiBatchSize: 20,
   translationImportPath: "@/i18n",
   translationFunctionName: "t"
@@ -354,7 +355,8 @@ export default {
 - `languages`: supported locales
 - `ignore`: ignored directories
 - `sourceLocale`: canonical source locale, default `en`
-- `aiModel`: OpenAI model for key generation
+- `openAiModel`: OpenAI model for key generation
+- `geminiModel`: Gemini model used only when OpenAI key generation is rate-limited
 - `aiBatchSize`: number of strings per key-generation batch
 - `translationImportPath`: import path to inject when transforming source
 - `translationFunctionName`: translation function name to call in transformed JSX

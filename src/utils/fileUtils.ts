@@ -32,7 +32,8 @@ const DEFAULT_CONFIG: Omit<ResolvedGlobalyzeConfig, "rootDir" | "sourceDir" | "l
     languages: ["en", "ar", "fr", "de"],
     ignore: DEFAULT_IGNORE,
     sourceLocale: "en",
-    aiModel: "gpt-4o-mini",
+    openAiModel: "gpt-4o-mini",
+    geminiModel: "gemini-2.5-flash-lite",
     aiBatchSize: 20,
     translationImportPath: "@/i18n",
     translationFunctionName: "t",
@@ -211,7 +212,13 @@ export function createDefaultConfigContents(
     '  sourceDir: "src",',
     '  localesDir: "locales",',
     `  languages: ${formatStringArray(languages)},`,
-    `  ignore: ${formatStringArray(DEFAULT_IGNORE)}`,
+    `  ignore: ${formatStringArray(DEFAULT_IGNORE)},`,
+    `  sourceLocale: ${quoteString(DEFAULT_CONFIG.sourceLocale)},`,
+    `  openAiModel: ${quoteString(DEFAULT_CONFIG.openAiModel)},`,
+    `  geminiModel: ${quoteString(DEFAULT_CONFIG.geminiModel)},`,
+    `  aiBatchSize: ${String(DEFAULT_CONFIG.aiBatchSize)},`,
+    `  translationImportPath: ${quoteString(DEFAULT_CONFIG.translationImportPath)},`,
+    `  translationFunctionName: ${quoteString(DEFAULT_CONFIG.translationFunctionName)},`,
     "};",
     ""
   ].join("\n");
@@ -226,7 +233,8 @@ export function createConfigContents(
     | "languages"
     | "ignore"
     | "sourceLocale"
-    | "aiModel"
+    | "openAiModel"
+    | "geminiModel"
     | "aiBatchSize"
     | "translationImportPath"
     | "translationFunctionName"
@@ -242,7 +250,8 @@ export function createConfigContents(
     `  languages: ${formatStringArray(config.languages)},`,
     `  ignore: ${formatStringArray(config.ignore)},`,
     `  sourceLocale: ${quoteString(config.sourceLocale)},`,
-    `  aiModel: ${quoteString(config.aiModel)},`,
+    `  openAiModel: ${quoteString(config.openAiModel)},`,
+    `  geminiModel: ${quoteString(config.geminiModel)},`,
     `  aiBatchSize: ${String(config.aiBatchSize)},`,
     `  translationImportPath: ${quoteString(config.translationImportPath)},`,
     `  translationFunctionName: ${quoteString(config.translationFunctionName)},`,
@@ -344,7 +353,16 @@ export async function loadGlobalyzeConfig(
     mergedConfig.sourceLocale,
     resolvedConfigPath
   );
-  assertOptionalString("aiModel", mergedConfig.aiModel, resolvedConfigPath);
+  assertOptionalString(
+    "openAiModel",
+    mergedConfig.openAiModel,
+    resolvedConfigPath
+  );
+  assertOptionalString(
+    "geminiModel",
+    mergedConfig.geminiModel,
+    resolvedConfigPath
+  );
   assertOptionalPositiveNumber(
     "aiBatchSize",
     mergedConfig.aiBatchSize,
@@ -384,7 +402,14 @@ export async function loadGlobalyzeConfig(
       mergedConfig.sourceLocale,
       DEFAULT_CONFIG.sourceLocale
     ),
-    aiModel: resolveOptionalString(mergedConfig.aiModel, DEFAULT_CONFIG.aiModel),
+    openAiModel: resolveOptionalString(
+      mergedConfig.openAiModel,
+      DEFAULT_CONFIG.openAiModel
+    ),
+    geminiModel: resolveOptionalString(
+      mergedConfig.geminiModel,
+      DEFAULT_CONFIG.geminiModel
+    ),
     aiBatchSize:
       typeof mergedConfig.aiBatchSize === "number" &&
       mergedConfig.aiBatchSize > 0
