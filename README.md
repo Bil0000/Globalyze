@@ -110,8 +110,13 @@ globalyze --help
 Install directly from GitHub:
 
 ```bash
-bun add -g github:<owner>/<repo>
+bun add -g github:Bil0000/Globalyze
 ```
+
+Repository URLs:
+
+- HTTPS: [https://github.com/Bil0000/Globalyze.git](https://github.com/Bil0000/Globalyze.git)
+- SSH: `git@github.com:Bil0000/Globalyze.git`
 
 ## Quick Start
 
@@ -430,7 +435,7 @@ To use the same automation in another repository:
 
 1. copy the workflow file into that repository
 2. add a repository variable named `GLOBALYZE_INSTALL_SOURCE`
-3. set it to a Bun-installable source such as `github:<owner>/<repo>`
+3. set it to a Bun-installable source such as `github:Bil0000/Globalyze`
 4. add `globalyze.config.ts`
 5. configure repository secrets such as `GLOBALYZE_OPENAI_API_KEY`, `GLOBALYZE_GEMINI_API_KEY`, and `GLOBALYZE_LINGO_API_KEY` if you want real AI keys and translations
 
