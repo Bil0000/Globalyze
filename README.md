@@ -163,12 +163,16 @@ Common variables:
 
 ```bash
 OPENAI_API_KEY=your_openai_key
+GEMINI_API_KEY=your_gemini_key
 LINGO_API_KEY=your_lingo_key
 ```
 
 Behavior when keys are missing:
 
 - No `OPENAI_API_KEY`: Globalyze uses deterministic fallback keys
+- OpenAI rate-limited (`429`) and `GEMINI_API_KEY` is set: Globalyze retries semantic key generation with Gemini using a low-cost fallback model
+- OpenAI rate-limited and no Gemini key is configured: Globalyze warns and falls back to deterministic keys
+- OpenAI and Gemini both rate-limited or unavailable: Globalyze warns in the CLI and falls back to deterministic keys
 - No `LINGO_API_KEY`: Globalyze copies English source values into target locales
 
 ## CLI Commands

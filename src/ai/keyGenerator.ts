@@ -10,6 +10,21 @@ import type {
 import { findSimilarExistingKey } from "./keySimilarity";
 import { toPosixPath } from "../utils/fileUtils";
 
+const GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite";
+const GEMINI_API_URL =
+  "https://generativelanguage.googleapis.com/v1beta/models";
+
+interface OpenAIKeyGenerationClient {
+  responses: {
+    create(input: {
+      model: string;
+      input: string;
+    }): Promise<{
+      output_text: string;
+    }>;
+  };
+}
+
 const GENERIC_FILE_SEGMENTS = new Set([
   "src",
   "app",
@@ -156,6 +171,7 @@ function buildPrompt(batch: readonly KeyGenerationCandidate[]): string {
     "- no spaces",
     "- no punctuation except dots and underscores",
     "- keep keys semantic and concise",
+    "- do not wrap the response in markdown fences or explanations",
     "",
     'Return strict JSON as {"items":[{"text":"...","key":"..."}]}.',
     "",
@@ -163,8 +179,31 @@ function buildPrompt(batch: readonly KeyGenerationCandidate[]): string {
   ].join("\n");
 }
 
+function extractJsonObject(value: string): string {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return trimmed;
+  }
+
+  const fencedMatch = /```(?:json)?\s*([\s\S]*?)\s*```/i.exec(trimmed);
+
+  if (fencedMatch?.[1]) {
+    return fencedMatch[1].trim();
+  }
+
+  const firstBrace = trimmed.indexOf("{");
+  const lastBrace = trimmed.lastIndexOf("}");
+
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    return trimmed.slice(firstBrace, lastBrace + 1);
+  }
+
+  return trimmed;
+}
+
 function parseResponse(output: string): Map<string, string> {
-  const parsed = JSON.parse(output) as unknown;
+  const parsed = JSON.parse(extractJsonObject(output)) as unknown;
   const mappings = new Map<string, string>();
 
   if (
@@ -215,7 +254,7 @@ function dedupeCandidates(
 }
 
 async function generateBatchWithOpenAI(
-  client: OpenAI,
+  client: OpenAIKeyGenerationClient,
   model: string,
   batch: readonly KeyGenerationCandidate[]
 ): Promise<Map<string, string>> {
@@ -227,6 +266,100 @@ async function generateBatchWithOpenAI(
   return parseResponse(response.output_text);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function getErrorStatus(error: unknown): number | null {
+  if (!isRecord(error)) {
+    return null;
+  }
+
+  const status = error.status;
+
+  return typeof status === "number" ? status : null;
+}
+
+function isRateLimitError(error: unknown): boolean {
+  return getErrorStatus(error) === 429;
+}
+
+function extractGeminiText(value: unknown): string {
+  if (!isRecord(value)) {
+    return "";
+  }
+
+  const candidatesValue = value.candidates;
+
+  if (!Array.isArray(candidatesValue)) {
+    return "";
+  }
+
+  const candidate: unknown = candidatesValue[0];
+
+  if (!isRecord(candidate) || !isRecord(candidate.content)) {
+    return "";
+  }
+
+  const partsValue = candidate.content.parts;
+
+  if (!Array.isArray(partsValue)) {
+    return "";
+  }
+
+  return partsValue
+    .map((part) => {
+      if (!isRecord(part)) {
+        return "";
+      }
+
+      return typeof part.text === "string" ? part.text : "";
+    })
+    .join("")
+    .trim();
+}
+
+async function generateBatchWithGemini(
+  apiKey: string,
+  batch: readonly KeyGenerationCandidate[],
+  fetchImpl: typeof fetch = fetch
+): Promise<Map<string, string>> {
+  const response = await fetchImpl(
+    `${GEMINI_API_URL}/${GEMINI_FALLBACK_MODEL}:generateContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey
+      },
+      body: JSON.stringify({
+        contents: [
+          {
+            parts: [
+              {
+                text: buildPrompt(batch)
+              }
+            ]
+          }
+        ]
+      })
+    }
+  );
+
+  if (!response.ok) {
+    const details = await response.text();
+    const status = response.status;
+    const error = new Error(
+      `Gemini API request failed with status ${String(status)}${details ? `: ${details}` : ""}`
+    ) as Error & { status?: number };
+    error.status = status;
+    throw error;
+  }
+
+  const payload: unknown = await response.json();
+  return parseResponse(extractGeminiText(payload));
+}
+
 export async function generateSemanticKeys(
   strings: readonly ExtractedString[],
   options: {
@@ -234,6 +367,8 @@ export async function generateSemanticKeys(
     model?: string;
     batchSize?: number;
     existingLocale?: LocaleDictionary;
+    openAIClient?: OpenAIKeyGenerationClient;
+    fetchImpl?: typeof fetch;
   } = {}
 ): Promise<KeyGenerationResult> {
   const candidates = dedupeCandidates(strings);
@@ -241,6 +376,7 @@ export async function generateSemanticKeys(
   const existingLocale = options.existingLocale ?? {};
   const reservedKeys = new Set<string>();
   const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
+  const geminiApiKey = process.env.GEMINI_API_KEY;
   const model = options.model ?? "gpt-4o-mini";
   const batchSize = options.batchSize ?? 20;
   let usedFallback = false;
@@ -306,7 +442,8 @@ export async function generateSemanticKeys(
     };
   }
 
-  const client = new OpenAI({ apiKey });
+  const client =
+    options.openAIClient ?? (new OpenAI({ apiKey }) as OpenAIKeyGenerationClient);
 
   for (let index = 0; index < pendingCandidates.length; index += batchSize) {
     const batch = pendingCandidates.slice(index, index + batchSize);
@@ -324,10 +461,53 @@ export async function generateSemanticKeys(
         assignCandidate(candidate, generated.get(candidate.text) ?? null);
       }
     } catch (error) {
+      if (isRateLimitError(error) && geminiApiKey) {
+        try {
+          const generated = await generateBatchWithGemini(
+            geminiApiKey,
+            batch,
+            options.fetchImpl
+          );
+
+          if (generated.size === 0 && batch.length > 0) {
+            usedFallback = true;
+            fallbackReason =
+              "OpenAI rate limits were reached, Gemini returned an invalid key payload, and deterministic fallback keys were used.";
+          }
+
+          for (const candidate of batch) {
+            assignCandidate(candidate, generated.get(candidate.text) ?? null);
+          }
+
+          continue;
+        } catch (geminiError) {
+          usedFallback = true;
+          const openAiReason =
+            error instanceof Error
+              ? error.message
+              : "Unknown OpenAI API failure";
+          const geminiReason =
+            geminiError instanceof Error
+              ? geminiError.message
+              : "Unknown Gemini API failure";
+
+          fallbackReason = `OpenAI key generation hit a rate limit (${openAiReason}) and Gemini fallback also failed (${geminiReason}). Deterministic fallback keys were used.`;
+
+          for (const candidate of batch) {
+            assignCandidate(candidate, null);
+          }
+
+          continue;
+        }
+      }
+
       usedFallback = true;
       const reason =
         error instanceof Error ? error.message : "Unknown OpenAI API failure";
-      fallbackReason = `OpenAI key generation failed: ${reason}. Deterministic fallback keys were used.`;
+
+      fallbackReason = isRateLimitError(error) && !geminiApiKey
+        ? `OpenAI key generation hit a rate limit (${reason}), GEMINI_API_KEY is not set, and deterministic fallback keys were used.`
+        : `OpenAI key generation failed: ${reason}. Deterministic fallback keys were used.`;
 
       for (const candidate of batch) {
         assignCandidate(candidate, null);
