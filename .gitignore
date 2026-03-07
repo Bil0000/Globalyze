@@ -5,3 +5,4 @@ dist
 coverage
 examples/demo-nextjs/.next
 examples/demo-nextjs/locales
+examples/demo-nextjs/
