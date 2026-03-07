@@ -7,6 +7,7 @@ import type {
 } from "../types";
 import { GlobalyzeError } from "../utils/errors";
 import {
+  ensureLocaleCoverageReady,
   readLocaleDictionary,
   writeLocaleDictionary
 } from "../i18n/localeManager";
@@ -39,13 +40,8 @@ function coerceTranslatedLocale(
 export async function translateLocales(
   config: ResolvedGlobalyzeConfig
 ): Promise<TranslationResult> {
+  await ensureLocaleCoverageReady(config);
   const sourceLocale = await readLocaleDictionary(config, config.sourceLocale);
-
-  if (Object.keys(sourceLocale).length === 0) {
-    throw new GlobalyzeError(
-      `Source locale ${config.sourceLocale}.json is empty. Run "globalyze transform" first.`
-    );
-  }
 
   const targetLanguages = config.languages.filter(
     (language) => language !== config.sourceLocale

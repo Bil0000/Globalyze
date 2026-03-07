@@ -53,6 +53,7 @@ export interface KeyAssignment extends KeyGenerationCandidate {
 export interface KeyGenerationResult {
   keysByText: Map<string, string>;
   usedFallback: boolean;
+  fallbackReason?: string;
 }
 
 export interface FileTransformResult {

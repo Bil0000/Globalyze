@@ -61,6 +61,52 @@ function resolveOptionalString(input: unknown, fallback: string): string {
     : fallback;
 }
 
+function assertOptionalString(
+  fieldName: string,
+  value: unknown,
+  configPath: string
+): void {
+  if (value !== undefined && typeof value !== "string") {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "${fieldName}" value. Expected a string.`
+    );
+  }
+}
+
+function assertOptionalStringArray(
+  fieldName: string,
+  value: unknown,
+  configPath: string
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string" || entry.trim().length === 0)
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "${fieldName}" value. Expected an array of non-empty strings.`
+    );
+  }
+}
+
+function assertOptionalPositiveNumber(
+  fieldName: string,
+  value: unknown,
+  configPath: string
+): void {
+  if (
+    value !== undefined &&
+    (typeof value !== "number" || !Number.isFinite(value) || value <= 0)
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "${fieldName}" value. Expected a positive number.`
+    );
+  }
+}
+
 export function toPosixPath(value: string): string {
   return value.split(path.sep).join(path.posix.sep);
 }
@@ -93,7 +139,16 @@ export async function readJsonFile(
   }
 
   const contents = await fs.readFile(filePath, "utf8");
-  const parsed = JSON.parse(contents) as unknown;
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(contents) as unknown;
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message : "Unknown JSON parse failure";
+
+    throw new GlobalyzeError(`Failed to parse JSON at ${filePath}: ${reason}`);
+  }
 
   if (!isPlainObject(parsed)) {
     throw new GlobalyzeError(`Expected ${filePath} to contain a JSON object.`);
@@ -145,17 +200,65 @@ export async function loadGlobalyzeConfig(
     );
   }
 
-  const importedModule = (await import(
-    `${pathToFileURL(resolvedConfigPath).href}?v=${String(Date.now())}`
-  )) as {
-    default?: unknown;
-  };
+  let importedModule: { default?: unknown };
 
-  const rawConfig = isPlainObject(importedModule.default)
-    ? importedModule.default
-    : {};
+  try {
+    importedModule = (await import(
+      `${pathToFileURL(resolvedConfigPath).href}?v=${String(Date.now())}`
+    )) as {
+      default?: unknown;
+    };
+  } catch (error) {
+    const reason =
+      error instanceof Error ? error.message : "Unknown config import failure";
+
+    throw new GlobalyzeError(
+      `Failed to load config at ${resolvedConfigPath}: ${reason}`
+    );
+  }
+
+  if (importedModule.default === undefined) {
+    throw new GlobalyzeError(
+      `Config at ${resolvedConfigPath} must export a default object.`
+    );
+  }
+
+  if (!isPlainObject(importedModule.default)) {
+    throw new GlobalyzeError(
+      `Config at ${resolvedConfigPath} must export a plain object.`
+    );
+  }
+
+  const rawConfig = importedModule.default;
   const mergedConfig = { ...rawConfig, ...overrides };
   const rootDir = path.dirname(resolvedConfigPath);
+
+  assertOptionalString("sourceDir", mergedConfig.sourceDir, resolvedConfigPath);
+  assertOptionalString("localesDir", mergedConfig.localesDir, resolvedConfigPath);
+  assertOptionalStringArray("languages", mergedConfig.languages, resolvedConfigPath);
+  assertOptionalStringArray("ignore", mergedConfig.ignore, resolvedConfigPath);
+  assertOptionalString(
+    "sourceLocale",
+    mergedConfig.sourceLocale,
+    resolvedConfigPath
+  );
+  assertOptionalString("aiModel", mergedConfig.aiModel, resolvedConfigPath);
+  assertOptionalPositiveNumber(
+    "aiBatchSize",
+    mergedConfig.aiBatchSize,
+    resolvedConfigPath
+  );
+  assertOptionalString(
+    "translationImportPath",
+    mergedConfig.translationImportPath,
+    resolvedConfigPath
+  );
+  assertOptionalString(
+    "translationFunctionName",
+    mergedConfig.translationFunctionName,
+    resolvedConfigPath
+  );
+  assertOptionalString("lingoApiUrl", mergedConfig.lingoApiUrl, resolvedConfigPath);
 
   const sourceDirInput = resolveOptionalString(
     mergedConfig.sourceDir,
@@ -210,6 +313,12 @@ export async function loadGlobalyzeConfig(
   if (!(await fs.pathExists(resolvedConfig.sourceDir))) {
     throw new GlobalyzeError(
       `Source directory does not exist: ${resolvedConfig.sourceDir}`
+    );
+  }
+
+  if (resolvedConfig.languages.length === 0) {
+    throw new GlobalyzeError(
+      `Config at ${resolvedConfigPath} must define at least one language.`
     );
   }
 

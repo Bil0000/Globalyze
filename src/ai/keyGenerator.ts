@@ -239,6 +239,7 @@ export async function generateSemanticKeys(
   const model = options.model ?? "gpt-4o-mini";
   const batchSize = options.batchSize ?? 20;
   let usedFallback = false;
+  let fallbackReason: string | undefined;
 
   const assignCandidate = (
     candidate: KeyGenerationCandidate,
@@ -254,6 +255,8 @@ export async function generateSemanticKeys(
 
   if (!apiKey) {
     usedFallback = true;
+    fallbackReason =
+      "OPENAI_API_KEY is not set, so deterministic fallback keys were used.";
 
     for (const candidate of candidates) {
       assignCandidate(candidate, null);
@@ -261,7 +264,8 @@ export async function generateSemanticKeys(
 
     return {
       keysByText,
-      usedFallback
+      usedFallback,
+      fallbackReason
     };
   }
 
@@ -273,11 +277,20 @@ export async function generateSemanticKeys(
     try {
       const generated = await generateBatchWithOpenAI(client, model, batch);
 
+      if (generated.size === 0 && batch.length > 0) {
+        usedFallback = true;
+        fallbackReason =
+          "OpenAI returned an invalid key payload, so deterministic fallback keys were used.";
+      }
+
       for (const candidate of batch) {
         assignCandidate(candidate, generated.get(candidate.text) ?? null);
       }
-    } catch {
+    } catch (error) {
       usedFallback = true;
+      const reason =
+        error instanceof Error ? error.message : "Unknown OpenAI API failure";
+      fallbackReason = `OpenAI key generation failed: ${reason}. Deterministic fallback keys were used.`;
 
       for (const candidate of batch) {
         assignCandidate(candidate, null);
@@ -287,7 +300,8 @@ export async function generateSemanticKeys(
 
   return {
     keysByText,
-    usedFallback
+    usedFallback,
+    ...(fallbackReason ? { fallbackReason } : {})
   };
 }
 

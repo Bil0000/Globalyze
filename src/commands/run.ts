@@ -1,8 +1,13 @@
 import { Command } from "commander";
 
-import { runFullPipeline } from "../cli/pipeline";
-import type { GlobalyzeConfig } from "../types";
-import { loadGlobalyzeConfig } from "../utils/fileUtils";
+import { createKeyAssignments, generateSemanticKeys } from "../ai/keyGenerator";
+import { extractStringsFromFiles } from "../extractor/stringExtractor";
+import { buildSourceLocale, syncLocaleFiles } from "../i18n/localeManager";
+import { translateLocales } from "../lingo/lingoClient";
+import { scanProjectFiles } from "../scanner/projectScanner";
+import { transformFiles } from "../transformer/astTransformer";
+import type { ExtractedString, GlobalyzeConfig } from "../types";
+import { loadGlobalyzeConfig, toRelativePosixPath } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
 
 function buildOverrides(options: {
@@ -28,33 +33,77 @@ export function registerRunCommand(program: Command): void {
         sourceDir?: string;
         localesDir?: string;
       }) => {
-        const config = await loadGlobalyzeConfig(
-          options.config,
-          buildOverrides(options)
+        const config = await logger.step(
+          "Loading configuration",
+          () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
+          "Loaded configuration"
         );
-        const result = await runFullPipeline(config);
-        const updatedFiles = result.transform.transformedFiles.filter(
-          (item) => item.updated
+        const files = await logger.step(
+          "Scanning source files",
+          () => scanProjectFiles(config),
+          (discoveredFiles) =>
+            `Discovered ${String(discoveredFiles.length)} source files`
+        );
+        const rawStrings = await logger.step(
+          "Extracting hardcoded UI strings",
+          () => extractStringsFromFiles(files),
+          (strings) => `Extracted ${String(strings.length)} UI strings`
+        );
+        const keySourceStrings: ExtractedString[] = rawStrings.map((item) => ({
+          ...item,
+          file: toRelativePosixPath(config.sourceDir, item.file)
+        }));
+        const keyResult = await logger.step(
+          "Generating translation keys",
+          () =>
+            generateSemanticKeys(keySourceStrings, {
+              model: config.aiModel,
+              batchSize: config.aiBatchSize
+            }),
+          (result) =>
+            `Generated ${String(result.keysByText.size)} translation keys${
+              result.usedFallback ? " using fallback mode" : ""
+            }`
         );
 
-        logger.success("scanning project");
-        logger.success(
-          `extracted ${String(result.transform.strings.length)} strings`
+        if (keyResult.fallbackReason) {
+          logger.warn(keyResult.fallbackReason);
+        }
+
+        const transformedFiles = await logger.step(
+          "Transforming source files",
+          () => transformFiles(files, keyResult.keysByText, config),
+          (results) =>
+            `Transformed ${String(results.filter((item) => item.updated).length)} files`
         );
-        logger.success(
-          `generated ${String(result.transform.keyAssignments.length)} translation keys${
-            result.transform.usedFallbackKeys ? " using fallback mode" : ""
-          }`
+        const keyAssignments = createKeyAssignments(
+          keySourceStrings,
+          keyResult.keysByText
         );
-        logger.success(`transformed ${String(updatedFiles.length)} files`);
-        logger.success(`generated locales in ${config.localesDir}`);
-        logger.success(
-          `translated ${String(result.translation.translatedLocales.length)} languages${
-            result.translation.usedMockTranslations
-              ? " using English fallback values"
-              : ""
-          }`
+        await logger.step(
+          "Syncing locale files",
+          () => syncLocaleFiles(config, buildSourceLocale(keyAssignments)),
+          () => `Updated locale files in ${config.localesDir}`
         );
+        const translation = await logger.step(
+          "Translating locale files",
+          () => translateLocales(config),
+          (result) =>
+            `Translated ${String(result.translatedLocales.length)} languages${
+              result.usedMockTranslations
+                ? " using English fallback values"
+                : ""
+            }`
+        );
+
+        if (translation.usedMockTranslations) {
+          logger.warn(
+            "LINGO_API_KEY is not set, so English source values were copied to target locales."
+          );
+        }
+
+        const updatedFiles = transformedFiles.filter((item) => item.updated);
+        logger.info(`Pipeline complete: ${String(updatedFiles.length)} files updated`);
       }
     );
 }

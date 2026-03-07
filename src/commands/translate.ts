@@ -1,6 +1,10 @@
 import { Command } from "commander";
 
-import { checkTranslationCoverage, translateProject } from "../cli/pipeline";
+import {
+  ensureLocaleCoverageReady,
+  findMissingTranslationKeys
+} from "../i18n/localeManager";
+import { translateLocales } from "../lingo/lingoClient";
 import type { GlobalyzeConfig } from "../types";
 import { GlobalyzeError } from "../utils/errors";
 import { loadGlobalyzeConfig } from "../utils/fileUtils";
@@ -31,13 +35,23 @@ export function registerTranslateCommand(program: Command): void {
         localesDir?: string;
         check?: boolean;
       }) => {
-        const config = await loadGlobalyzeConfig(
-          options.config,
-          buildOverrides(options)
+        const config = await logger.step(
+          "Loading configuration",
+          () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
+          "Loaded configuration"
         );
 
         if (options.check) {
-          const report = await checkTranslationCoverage(config);
+          await logger.step(
+            "Validating locale setup",
+            () => ensureLocaleCoverageReady(config),
+            "Locale setup is ready"
+          );
+          const report = await logger.step(
+            "Checking translation coverage",
+            () => findMissingTranslationKeys(config),
+            "Checked translation coverage"
+          );
           const missingEntries = Object.entries(report).flatMap(
             ([language, keys]) => keys.map((key) => `${language}: ${key}`)
           );
@@ -52,13 +66,22 @@ export function registerTranslateCommand(program: Command): void {
           return;
         }
 
-        const result = await translateProject(config);
-
-        logger.success(
-          `translated ${String(result.translatedLocales.length)} languages${
-            result.usedMockTranslations ? " using English fallback values" : ""
-          }`
+        const result = await logger.step(
+          "Translating locale files",
+          () => translateLocales(config),
+          (translationResult) =>
+            `Translated ${String(translationResult.translatedLocales.length)} languages${
+              translationResult.usedMockTranslations
+                ? " using English fallback values"
+                : ""
+            }`
         );
+
+        if (result.usedMockTranslations) {
+          logger.warn(
+            "LINGO_API_KEY is not set, so English source values were copied to target locales."
+          );
+        }
       }
     );
 }

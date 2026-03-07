@@ -10,6 +10,27 @@ export class Logger {
     }).start();
   }
 
+  async step<T>(
+    message: string,
+    task: () => Promise<T>,
+    successMessage?: string | ((result: T) => string)
+  ): Promise<T> {
+    const spinner = this.start(message);
+
+    try {
+      const result = await task();
+      const finalMessage =
+        typeof successMessage === "function"
+          ? successMessage(result)
+          : successMessage ?? message;
+      spinner.succeed(finalMessage);
+      return result;
+    } catch (error) {
+      spinner.fail(message);
+      throw error;
+    }
+  }
+
   info(message: string): void {
     console.log(`${chalk.cyan(logSymbols.info)} ${message}`);
   }

@@ -1,8 +1,12 @@
 import { Command } from "commander";
 
-import { transformProject } from "../cli/pipeline";
-import type { GlobalyzeConfig } from "../types";
-import { loadGlobalyzeConfig } from "../utils/fileUtils";
+import { createKeyAssignments, generateSemanticKeys } from "../ai/keyGenerator";
+import { extractStringsFromFiles } from "../extractor/stringExtractor";
+import { buildSourceLocale, syncLocaleFiles } from "../i18n/localeManager";
+import { scanProjectFiles } from "../scanner/projectScanner";
+import { transformFiles } from "../transformer/astTransformer";
+import type { ExtractedString, GlobalyzeConfig } from "../types";
+import { loadGlobalyzeConfig, toRelativePosixPath } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
 
 function buildOverrides(options: {
@@ -28,24 +32,68 @@ export function registerTransformCommand(program: Command): void {
         sourceDir?: string;
         localesDir?: string;
       }) => {
-        const config = await loadGlobalyzeConfig(
-          options.config,
-          buildOverrides(options)
+        const config = await logger.step(
+          "Loading configuration",
+          () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
+          "Loaded configuration"
         );
-        const result = await transformProject(config);
-        const updatedFiles = result.transformedFiles.filter((item) => item.updated);
+        const files = await logger.step(
+          "Scanning source files",
+          () => scanProjectFiles(config),
+          (discoveredFiles) =>
+            `Discovered ${String(discoveredFiles.length)} source files`
+        );
+        const rawStrings = await logger.step(
+          "Extracting hardcoded UI strings",
+          () => extractStringsFromFiles(files),
+          (strings) => `Extracted ${String(strings.length)} UI strings`
+        );
+        const keySourceStrings: ExtractedString[] = rawStrings.map((item) => ({
+          ...item,
+          file: toRelativePosixPath(config.sourceDir, item.file)
+        }));
+        const keyResult = await logger.step(
+          "Generating translation keys",
+          () =>
+            generateSemanticKeys(keySourceStrings, {
+              model: config.aiModel,
+              batchSize: config.aiBatchSize
+            }),
+          (result) =>
+            `Generated ${String(result.keysByText.size)} translation keys${
+              result.usedFallback ? " using fallback mode" : ""
+            }`
+        );
 
-        logger.success("scanning project");
-        logger.success(`extracted ${String(result.strings.length)} strings`);
-        logger.success(
-          `generated ${String(result.keyAssignments.length)} translation keys${
-            result.usedFallbackKeys ? " using fallback mode" : ""
-          }`
+        if (keyResult.fallbackReason) {
+          logger.warn(keyResult.fallbackReason);
+        }
+
+        const transformedFiles = await logger.step(
+          "Transforming source files",
+          () => transformFiles(files, keyResult.keysByText, config),
+          (results) =>
+            `Transformed ${String(results.filter((item) => item.updated).length)} files`
         );
+        const keyAssignments = createKeyAssignments(
+          keySourceStrings,
+          keyResult.keysByText
+        );
+        const localeSync = await logger.step(
+          "Syncing locale files",
+          () => syncLocaleFiles(config, buildSourceLocale(keyAssignments)),
+          () => `Updated locale files in ${config.localesDir}`
+        );
+        const updatedFiles = transformedFiles.filter((item) => item.updated);
+
         logger.success(`transformed ${String(updatedFiles.length)} files`);
         logger.success(
-          `generated locales for ${config.languages.join(", ")} in ${config.localesDir}`
+          `Locale sync complete for ${config.languages.join(", ")}`
         );
+
+        if (localeSync.created.length > 0) {
+          logger.info(`Created locales: ${localeSync.created.join(", ")}`);
+        }
       }
     );
 }

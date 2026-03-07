@@ -37,19 +37,21 @@ export function registerScanCommand(program: Command): void {
         json?: boolean;
         failOnFindings?: boolean;
       }) => {
-        const config = await loadGlobalyzeConfig(
-          options.config,
-          buildOverrides(options)
+        const config = await logger.step(
+          "Loading configuration",
+          () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
+          "Loaded configuration"
         );
-        const result = await collectProjectStrings(config);
+        const result = await logger.step(
+          "Scanning source files and extracting UI strings",
+          () => collectProjectStrings(config),
+          (scanResult) =>
+            `Scanned ${String(scanResult.files.length)} files and extracted ${String(scanResult.strings.length)} strings`
+        );
 
         if (options.json) {
           console.log(JSON.stringify(result, null, 2));
         } else {
-          logger.success("scanning project");
-          logger.success(`found ${String(result.files.length)} source files`);
-          logger.success(`extracted ${String(result.strings.length)} strings`);
-
           if (result.strings.length > 0) {
             logger.list(
               result.strings.map(
@@ -60,7 +62,9 @@ export function registerScanCommand(program: Command): void {
         }
 
         if (options.failOnFindings && result.strings.length > 0) {
-          throw new GlobalyzeError("Hardcoded UI strings detected.");
+          throw new GlobalyzeError(
+            `Hardcoded UI strings detected (${String(result.strings.length)} total). Review the findings above and run "globalyze transform" to fix them.`
+          );
         }
       }
     );
