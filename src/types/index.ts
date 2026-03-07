@@ -145,6 +145,7 @@ export interface WatchUpdateResult {
   newStrings: ExtractedString[];
   updatedFiles: FileTransformResult[];
   localeSync: LocaleSyncResult;
+  translation?: TranslationResult;
   reusedExistingKeys: number;
   usedFallbackKeys: boolean;
   fallbackReason?: string;

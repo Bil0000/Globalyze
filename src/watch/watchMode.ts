@@ -3,15 +3,18 @@ import path from "node:path";
 import chokidar, { type FSWatcher } from "chokidar";
 
 import { prepareTransformProject } from "../cli/pipeline";
+import { extractTranslationKeysFromFiles } from "../extractor/translationKeyExtractor";
 import {
   buildSourceLocale,
-  mergeSourceLocaleDictionary,
+  reconcileSourceLocaleDictionary,
   syncLocaleFiles
 } from "../i18n/localeManager";
+import { translateLocales } from "../lingo/lingoClient";
 import { transformFiles } from "../transformer/astTransformer";
 import type {
   ExtractedString,
   ResolvedGlobalyzeConfig,
+  TranslationResult,
   WatchUpdateResult
 } from "../types";
 import { SUPPORTED_EXTENSIONS, toRelativePosixPath } from "../utils/fileUtils";
@@ -60,27 +63,42 @@ export async function processWatchUpdate(
   previousStrings: readonly ExtractedString[]
 ): Promise<WatchUpdateResult> {
   const prepared = await prepareTransformProject(config);
+  const newStrings = filterNewStrings(previousStrings, prepared.rawStrings);
   const transformedFiles = await transformFiles(
     prepared.files,
     prepared.keysByText,
     config
   );
-  const mergedSourceLocale = await mergeSourceLocaleDictionary(
+  const activeTranslationKeys = await extractTranslationKeysFromFiles(
+    prepared.files,
+    config.translationFunctionName
+  );
+  const reconciledSourceLocale = await reconcileSourceLocaleDictionary(
     config,
-    buildSourceLocale(prepared.keyAssignments)
+    buildSourceLocale(prepared.keyAssignments),
+    activeTranslationKeys
   );
   const localeSync = await syncLocaleFiles(
     config,
-    mergedSourceLocale
+    reconciledSourceLocale,
+    {
+      preserveExistingOnEmpty: false
+    }
   );
+  let translation: TranslationResult | undefined;
+
+  if (newStrings.length > 0 && localeSync.sourceKeyCount > 0) {
+    translation = await translateLocales(config);
+  }
 
   return {
     changedFiles: prepared.files.map((filePath) =>
       toRelativePosixPath(config.rootDir, filePath)
     ),
-    newStrings: filterNewStrings(previousStrings, prepared.rawStrings),
+    newStrings,
     updatedFiles: transformedFiles.filter((item) => item.updated),
     localeSync,
+    ...(translation ? { translation } : {}),
     reusedExistingKeys: prepared.reusedExistingKeys,
     usedFallbackKeys: prepared.usedFallbackKeys,
     fallbackReason: prepared.fallbackReason

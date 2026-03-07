@@ -84,10 +84,23 @@ export async function executeWatchCommand(
         "Processing source changes",
         () => processWatchUpdate(config, previousStrings),
         (result) =>
-          `Updated ${String(result.updatedFiles.length)} files and synced locales`
+          `Updated ${String(result.updatedFiles.length)} files, synced locales${
+            result.translation
+              ? `, and translated ${String(result.translation.translatedLocales.length)} languages`
+              : ""
+          }`
       );
       logFallbackReason(update.fallbackReason);
       logReusedKeyCount(update.reusedExistingKeys);
+      if (update.translation?.usedMockTranslations) {
+        logger.warn(
+          update.translation.skippedReason ??
+            "English source values were copied to target locales."
+        );
+      }
+      if (update.translation?.skippedReason) {
+        logger.info(update.translation.skippedReason);
+      }
       logNewStrings(update.newStrings);
 
       const refreshed = await collectProjectStrings(config);

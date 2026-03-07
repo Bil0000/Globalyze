@@ -37,10 +37,14 @@ export function getLocaleFilePath(
 
 export async function syncLocaleFiles(
   config: ResolvedGlobalyzeConfig,
-  sourceLocale: LocaleDictionary
+  sourceLocale: LocaleDictionary,
+  options: {
+    preserveExistingOnEmpty?: boolean;
+  } = {}
 ): Promise<LocaleSyncResult> {
+  const preserveExistingOnEmpty = options.preserveExistingOnEmpty ?? true;
   const effectiveSourceLocale =
-    Object.keys(sourceLocale).length > 0
+    Object.keys(sourceLocale).length > 0 || !preserveExistingOnEmpty
       ? sourceLocale
       : await readLocaleDictionary(config, config.sourceLocale);
   const created: string[] = [];
@@ -125,6 +129,19 @@ export async function mergeSourceLocaleDictionary(
     ...currentSourceLocale,
     ...nextSourceLocale
   };
+}
+
+export async function reconcileSourceLocaleDictionary(
+  config: ResolvedGlobalyzeConfig,
+  nextSourceLocale: LocaleDictionary,
+  activeKeys: readonly string[]
+): Promise<LocaleDictionary> {
+  const merged = await mergeSourceLocaleDictionary(config, nextSourceLocale);
+  const activeKeySet = new Set(activeKeys);
+
+  return Object.fromEntries(
+    Object.entries(merged).filter(([key]) => activeKeySet.has(key))
+  );
 }
 
 export async function ensureLocaleCoverageReady(

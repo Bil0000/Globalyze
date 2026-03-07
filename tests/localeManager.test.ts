@@ -8,6 +8,7 @@ import {
   ensureLocaleCoverageReady,
   findMissingTranslationKeys,
   mergeSourceLocaleDictionary,
+  reconcileSourceLocaleDictionary,
   readLocaleDictionary,
   syncLocaleFiles,
   writeLocaleDictionary
@@ -130,6 +131,39 @@ describe("localeManager", () => {
 
     expect(merged).toEqual({
       "checkout.buy_button": "Buy now",
+      "support.contact_button": "Contact support"
+    });
+  });
+
+  it("reconciles source locale updates by removing inactive keys", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locales-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir);
+
+    await syncLocaleFiles(
+      config,
+      buildSourceLocale([
+        {
+          key: "checkout.buy_button",
+          text: "Buy now",
+          file: "src/app/page.tsx"
+        },
+        {
+          key: "support.contact_button",
+          text: "Contact support",
+          file: "src/app/page.tsx"
+        }
+      ])
+    );
+
+    const reconciled = await reconcileSourceLocaleDictionary(
+      config,
+      {},
+      ["support.contact_button"]
+    );
+
+    expect(reconciled).toEqual({
       "support.contact_button": "Contact support"
     });
   });
