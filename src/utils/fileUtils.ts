@@ -1,6 +1,7 @@
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
+import dotenv from "dotenv";
 import fs from "fs-extra";
 
 import type {
@@ -188,6 +189,38 @@ export function createDefaultConfigContents(): string {
   ].join("\n");
 }
 
+export function resolveGlobalyzeRootDir(): string {
+  return path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "..",
+    ".."
+  );
+}
+
+function loadEnvFiles(rootDir: string): void {
+  const envFiles = [".env", ".env.local"];
+
+  for (const envFile of envFiles) {
+    const envPath = path.join(rootDir, envFile);
+
+    if (!fs.existsSync(envPath)) {
+      continue;
+    }
+
+    const result = dotenv.config({
+      path: envPath,
+      override: false,
+      quiet: true
+    });
+
+    if (result.error) {
+      throw new GlobalyzeError(
+        `Failed to load environment file at ${envPath}: ${result.error.message}`
+      );
+    }
+  }
+}
+
 export async function loadGlobalyzeConfig(
   configPath = "globalyze.config.ts",
   overrides: Partial<GlobalyzeConfig> = {}
@@ -199,6 +232,9 @@ export async function loadGlobalyzeConfig(
       `Missing config file at ${resolvedConfigPath}. Run "globalyze init" first.`
     );
   }
+
+  const rootDir = path.dirname(resolvedConfigPath);
+  loadEnvFiles(resolveGlobalyzeRootDir());
 
   let importedModule: { default?: unknown };
 
@@ -231,7 +267,6 @@ export async function loadGlobalyzeConfig(
 
   const rawConfig = importedModule.default;
   const mergedConfig = { ...rawConfig, ...overrides };
-  const rootDir = path.dirname(resolvedConfigPath);
 
   assertOptionalString("sourceDir", mergedConfig.sourceDir, resolvedConfigPath);
   assertOptionalString("localesDir", mergedConfig.localesDir, resolvedConfigPath);

@@ -114,14 +114,14 @@ When run inside another project, `globalyze init` creates `globalyze.config.ts` 
 
 ## Environment variables
 
-For local testing, exporting variables in your terminal is enough:
+You can still export variables in your terminal:
 
 ```bash
 export OPENAI_API_KEY=your_openai_key
 export LINGO_API_KEY=your_lingo_key
 ```
 
-If you want them to persist across sessions, add them to your shell profile such as `~/.zshrc`:
+You can also add them to your shell profile such as `~/.zshrc`:
 
 ```bash
 export OPENAI_API_KEY=your_openai_key
@@ -134,12 +134,30 @@ Then reload your shell:
 source ~/.zshrc
 ```
 
+Recommended setup for real usage:
+
+Create a `.env` file in the Globalyze repository root:
+
+```bash
+OPENAI_API_KEY=your_openai_key
+LINGO_API_KEY=your_lingo_key
+```
+
+Globalyze now loads:
+
+- `.env`
+- `.env.local`
+
+from the main Globalyze repository or installed package root.
+
+That means once you set the keys in Globalyze’s own `.env`, you do not need to export them in each terminal session, and target projects do not need their own `.env` files for Globalyze to work.
+
 Current behavior if variables are missing:
 
 - no `OPENAI_API_KEY`: Globalyze generates deterministic fallback keys
 - no `LINGO_API_KEY`: Globalyze copies English strings into the other locale files
 
-This project does not load a `.env` file automatically.
+Existing shell environment variables still take precedence over `.env` values.
 
 ## Default repository behavior
 
