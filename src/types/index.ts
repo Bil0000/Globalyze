@@ -84,6 +84,20 @@ export interface TranslationResult {
   skippedReason?: string;
 }
 
+export interface LanguageCoverageReport {
+  code: string;
+  coverage: number;
+  missingKeys: string[];
+  translatedKeys: number;
+  totalKeys: number;
+}
+
+export interface TranslationCoverageReport {
+  sourceLocale: string;
+  totalKeys: number;
+  languages: LanguageCoverageReport[];
+}
+
 export interface TransformPipelineResult {
   files: string[];
   strings: ExtractedString[];

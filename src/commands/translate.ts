@@ -35,54 +35,67 @@ export function registerTranslateCommand(program: Command): void {
         localesDir?: string;
         check?: boolean;
       }) => {
-        const config = await logger.step(
-          "Loading configuration",
-          () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
-          "Loaded configuration"
-        );
-        logger.hint("Press Ctrl+C at any time to stop Globalyze safely.");
-
-        if (options.check) {
-          await logger.step(
-            "Validating locale setup",
-            () => ensureLocaleCoverageReady(config),
-            "Locale setup is ready"
-          );
-          const report = await logger.step(
-            "Checking translation coverage",
-            () => findMissingTranslationKeys(config),
-            "Checked translation coverage"
-          );
-          const missingEntries = Object.entries(report).flatMap(
-            ([language, keys]) => keys.map((key) => `${language}: ${key}`)
-          );
-
-          if (missingEntries.length > 0) {
-            logger.error("Missing translation keys detected");
-            logger.list(missingEntries);
-            throw new GlobalyzeError("Locale coverage check failed.");
-          }
-
-          logger.success("all locale files are fully translated");
-          return;
-        }
-
-        const result = await logger.step(
-          "Translating locale files",
-          () => translateLocales(config),
-          (translationResult) =>
-            `Translated ${String(translationResult.translatedLocales.length)} languages${
-              translationResult.usedMockTranslations
-                ? " using English fallback values"
-                : ""
-            }`
-        );
-
-        if (result.usedMockTranslations) {
-          logger.warn(
-            "LINGO_API_KEY is not set, so English source values were copied to target locales."
-          );
-        }
+        await executeTranslateCommand(options);
       }
     );
+}
+
+export async function executeTranslateCommand(
+  options: {
+    config?: string;
+    sourceDir?: string;
+    localesDir?: string;
+    check?: boolean;
+  } = {}
+) {
+  const config = await logger.step(
+    "Loading configuration",
+    () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
+    "Loaded configuration"
+  );
+  logger.hint("Press Ctrl+C at any time to stop Globalyze safely.");
+
+  if (options.check) {
+    await logger.step(
+      "Validating locale setup",
+      () => ensureLocaleCoverageReady(config),
+      "Locale setup is ready"
+    );
+    const report = await logger.step(
+      "Checking translation coverage",
+      () => findMissingTranslationKeys(config),
+      "Checked translation coverage"
+    );
+    const missingEntries = Object.entries(report).flatMap(([language, keys]) =>
+      keys.map((key) => `${language}: ${key}`)
+    );
+
+    if (missingEntries.length > 0) {
+      logger.error("Missing translation keys detected");
+      logger.list(missingEntries);
+      throw new GlobalyzeError("Locale coverage check failed.");
+    }
+
+    logger.success("all locale files are fully translated");
+    return report;
+  }
+
+  const result = await logger.step(
+    "Translating locale files",
+    () => translateLocales(config),
+    (translationResult) =>
+      `Translated ${String(translationResult.translatedLocales.length)} languages${
+        translationResult.usedMockTranslations
+          ? " using English fallback values"
+          : ""
+      }`
+  );
+
+  if (result.usedMockTranslations) {
+    logger.warn(
+      "LINGO_API_KEY is not set, so English source values were copied to target locales."
+    );
+  }
+
+  return result;
 }

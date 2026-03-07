@@ -2,7 +2,7 @@
 
 import { CommanderError } from "commander";
 
-import { buildProgram } from "./cli/program";
+import { runCLI } from "./cli";
 import { installInterruptHandler } from "./utils/interrupt";
 import { GlobalyzeError, toErrorMessage } from "./utils/errors";
 import { logger } from "./utils/logger";
@@ -20,8 +20,7 @@ async function readVersion(): Promise<string> {
 async function main(): Promise<void> {
   installInterruptHandler();
   const version = await readVersion();
-  const program = buildProgram(version);
-  await program.parseAsync(process.argv);
+  await runCLI(version);
 }
 
 try {

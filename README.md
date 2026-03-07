@@ -263,6 +263,25 @@ Initialize a new config:
 bun run globalyze init
 ```
 
+## Interactive CLI
+
+Running `globalyze` with no arguments launches an interactive menu:
+
+```bash
+globalyze
+```
+
+Available actions:
+
+- Scan project for strings
+- Transform source code
+- Generate translations
+- Run full pipeline
+- Show translation report
+- Exit
+
+The interactive menu routes to the same command implementations used by the standard CLI commands.
+
 Scan a project:
 
 ```bash
@@ -285,6 +304,12 @@ Translate locales:
 
 ```bash
 bun run globalyze translate
+```
+
+Generate a translation coverage report:
+
+```bash
+bun run globalyze report
 ```
 
 Check translation coverage:
@@ -518,6 +543,36 @@ bun run dev
 ## Demo project
 
 The included demo app lives in [examples/demo-nextjs](/Users/bilal/Documents/globalyze/examples/demo-nextjs). It intentionally contains hardcoded UI strings so you can verify the full transformation flow end to end.
+
+## Translation Coverage Report
+
+Generate a coverage report from locale files:
+
+```bash
+globalyze report
+```
+
+Example output:
+
+```text
+Globalyze Translation Report
+Source locale: en
+Total keys: 120
+
+Languages
+English    100% (120/120)
+Arabic      96% (115/120)
+French      94% (113/120)
+
+Missing Keys
+
+Arabic
+- checkout.buy_button
+- home.hero_title
+
+French
+- pricing.plan_title
+```
 
 ## Architecture
 

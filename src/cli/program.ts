@@ -1,6 +1,7 @@
 import { Command } from "commander";
 
 import { registerInitCommand } from "../commands/init";
+import { registerReportCommand } from "../commands/report";
 import { registerRunCommand } from "../commands/run";
 import { registerScanCommand } from "../commands/scan";
 import { registerTransformCommand } from "../commands/transform";
@@ -20,6 +21,7 @@ export function buildProgram(version: string): Command {
   registerScanCommand(program);
   registerTransformCommand(program);
   registerTranslateCommand(program);
+  registerReportCommand(program);
   registerRunCommand(program);
 
   return program;

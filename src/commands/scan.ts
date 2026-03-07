@@ -37,36 +37,48 @@ export function registerScanCommand(program: Command): void {
         json?: boolean;
         failOnFindings?: boolean;
       }) => {
-        const config = await logger.step(
-          "Loading configuration",
-          () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
-          "Loaded configuration"
-        );
-        logger.hint("Press Ctrl+C at any time to stop Globalyze safely.");
-        const result = await logger.step(
-          "Scanning source files and extracting UI strings",
-          () => collectProjectStrings(config),
-          (scanResult) =>
-            `Scanned ${String(scanResult.files.length)} files and extracted ${String(scanResult.strings.length)} strings`
-        );
-
-        if (options.json) {
-          console.log(JSON.stringify(result, null, 2));
-        } else {
-          if (result.strings.length > 0) {
-            logger.list(
-              result.strings.map(
-                (item) => `${item.file}:${String(item.line)} "${item.text}"`
-              )
-            );
-          }
-        }
-
-        if (options.failOnFindings && result.strings.length > 0) {
-          throw new GlobalyzeError(
-            `Hardcoded UI strings detected (${String(result.strings.length)} total). Review the findings above and run "globalyze transform" to fix them.`
-          );
-        }
+        await executeScanCommand(options);
       }
     );
+}
+
+export async function executeScanCommand(
+  options: {
+    config?: string;
+    sourceDir?: string;
+    localesDir?: string;
+    json?: boolean;
+    failOnFindings?: boolean;
+  } = {}
+) {
+  const config = await logger.step(
+    "Loading configuration",
+    () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
+    "Loaded configuration"
+  );
+  logger.hint("Press Ctrl+C at any time to stop Globalyze safely.");
+  const result = await logger.step(
+    "Scanning source files and extracting UI strings",
+    () => collectProjectStrings(config),
+    (scanResult) =>
+      `Scanned ${String(scanResult.files.length)} files and extracted ${String(scanResult.strings.length)} strings`
+  );
+
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else if (result.strings.length > 0) {
+    logger.list(
+      result.strings.map(
+        (item) => `${item.file}:${String(item.line)} "${item.text}"`
+      )
+    );
+  }
+
+  if (options.failOnFindings && result.strings.length > 0) {
+    throw new GlobalyzeError(
+      `Hardcoded UI strings detected (${String(result.strings.length)} total). Review the findings above and run "globalyze transform" to fix them.`
+    );
+  }
+
+  return result;
 }
