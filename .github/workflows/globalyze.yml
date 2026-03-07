@@ -10,6 +10,11 @@ permissions:
 jobs:
   i18n:
     runs-on: ubuntu-latest
+    env:
+      GLOBALYZE_INSTALL_SOURCE: ${{ vars.GLOBALYZE_INSTALL_SOURCE }}
+      OPENAI_API_KEY: ${{ secrets.GLOBALYZE_OPENAI_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GLOBALYZE_GEMINI_API_KEY }}
+      LINGO_API_KEY: ${{ secrets.GLOBALYZE_LINGO_API_KEY }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -19,11 +24,32 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - name: Resolve Globalyze install source
+        id: globalyze-source
+        shell: bash
+        run: |
+          if [[ -f package.json ]] && grep -q '"name":[[:space:]]*"globalyze"' package.json; then
+            echo "source=." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [[ -n "${GLOBALYZE_INSTALL_SOURCE}" ]]; then
+            echo "source=${GLOBALYZE_INSTALL_SOURCE}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Repository variable GLOBALYZE_INSTALL_SOURCE is required for external repositories." >&2
+          echo "Example: github:<owner>/globalyze" >&2
+          exit 1
+
+      - name: Install Globalyze CLI
+        run: bun add -g "${{ steps.globalyze-source.outputs.source }}"
+
+      - name: Verify Globalyze install
+        run: globalyze --help
 
       - name: Auto-fix project
-        run: bun run globalyze run
+        run: globalyze run
 
       - name: Commit Globalyze updates
         run: |
@@ -38,10 +64,10 @@ jobs:
         run: git push origin "HEAD:${{ github.head_ref }}"
 
       - name: Scan for hardcoded UI strings
-        run: bun run globalyze scan --fail-on-findings
+        run: globalyze scan --fail-on-findings
 
       - name: Check locale coverage
-        run: bun run globalyze translate --check
+        run: globalyze translate --check
 
       - name: Note fork limitation
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}

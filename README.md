@@ -415,7 +415,7 @@ Globalyze includes a GitHub Actions workflow at [.github/workflows/globalyze.yml
 Current workflow behavior:
 
 - runs on `pull_request`
-- installs Bun dependencies
+- installs the Globalyze CLI
 - runs `globalyze run`
 - commits generated changes with `globalyze bot: add missing translations`
 - pushes fixes back to the PR branch when allowed
@@ -429,9 +429,17 @@ Fork limitation:
 To use the same automation in another repository:
 
 1. copy the workflow file into that repository
-2. install Globalyze there or make it available globally
-3. add `globalyze.config.ts`
-4. configure secrets such as `LINGO_API_KEY` if you want real translations
+2. add a repository variable named `GLOBALYZE_INSTALL_SOURCE`
+3. set it to a Bun-installable source such as `github:<owner>/<repo>`
+4. add `globalyze.config.ts`
+5. configure repository secrets such as `GLOBALYZE_OPENAI_API_KEY`, `GLOBALYZE_GEMINI_API_KEY`, and `GLOBALYZE_LINGO_API_KEY` if you want real AI keys and translations
+
+Notes:
+
+- the workflow does not require Globalyze to be part of the target repository
+- it installs the CLI globally inside the GitHub Actions runner, then runs `globalyze ...` against the checked-out repo
+- when the workflow runs inside the Globalyze repo itself, it auto-installs from the checked-out local repository
+- this naming is only for GitHub Actions secrets; local CLI usage still uses `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `LINGO_API_KEY`
 
 ## Demo Project
 
