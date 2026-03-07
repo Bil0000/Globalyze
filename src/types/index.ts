@@ -72,6 +72,8 @@ export type LocaleDictionary = Record<string, string>;
 export interface LocaleSyncResult {
   created: string[];
   updated: string[];
+  removed: string[];
+  sourceKeyCount: number;
 }
 
 export type MissingTranslationReport = Record<string, string[]>;
@@ -79,6 +81,7 @@ export type MissingTranslationReport = Record<string, string[]>;
 export interface TranslationResult {
   translatedLocales: string[];
   usedMockTranslations: boolean;
+  skippedReason?: string;
 }
 
 export interface TransformPipelineResult {

@@ -42,6 +42,7 @@ export function registerScanCommand(program: Command): void {
           () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
           "Loaded configuration"
         );
+        logger.hint("Press Ctrl+C at any time to stop Globalyze safely.");
         const result = await logger.step(
           "Scanning source files and extracting UI strings",
           () => collectProjectStrings(config),

@@ -46,6 +46,15 @@ export async function translateLocales(
   const targetLanguages = config.languages.filter(
     (language) => language !== config.sourceLocale
   );
+
+  if (targetLanguages.length === 0) {
+    return {
+      translatedLocales: [],
+      usedMockTranslations: false,
+      skippedReason: "No target languages are configured."
+    };
+  }
+
   const apiKey = process.env.LINGO_API_KEY ?? process.env.LINGODOTDEV_API_KEY;
 
   if (!apiKey) {

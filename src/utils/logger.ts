@@ -35,6 +35,10 @@ export class Logger {
     console.log(`${chalk.cyan(logSymbols.info)} ${message}`);
   }
 
+  hint(message: string): void {
+    console.log(`${chalk.blue(logSymbols.info)} ${chalk.dim(message)}`);
+  }
+
   success(message: string): void {
     console.log(`${chalk.green(logSymbols.success)} ${message}`);
   }

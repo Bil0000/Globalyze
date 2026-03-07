@@ -68,4 +68,39 @@ describe("localeManager", () => {
       )
     );
   });
+
+  it("preserves the existing source locale and removes stale languages on re-sync", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locales-"));
+    tempDirectories.push(rootDir);
+
+    const initialConfig = createTestConfig(rootDir, {
+      languages: ["en", "fr", "de"]
+    });
+
+    await syncLocaleFiles(
+      initialConfig,
+      buildSourceLocale([
+        {
+          key: "checkout.buy_button",
+          text: "Buy now",
+          file: "src/app/page.tsx"
+        }
+      ])
+    );
+
+    const updatedConfig = createTestConfig(rootDir, {
+      languages: ["en", "es", "ar"]
+    });
+
+    const result = await syncLocaleFiles(updatedConfig, {});
+
+    expect(result.removed).toEqual(["de", "fr"]);
+    expect(result.sourceKeyCount).toBe(1);
+    expect(await readLocaleDictionary(updatedConfig, "en")).toEqual({
+      "checkout.buy_button": "Buy now"
+    });
+    expect(await readLocaleDictionary(updatedConfig, "es")).toEqual({
+      "checkout.buy_button": ""
+    });
+  });
 });

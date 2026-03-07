@@ -6,7 +6,11 @@ import { buildSourceLocale, syncLocaleFiles } from "../i18n/localeManager";
 import { translateLocales } from "../lingo/lingoClient";
 import { scanProjectFiles } from "../scanner/projectScanner";
 import { transformFiles } from "../transformer/astTransformer";
-import type { ExtractedString, GlobalyzeConfig } from "../types";
+import type {
+  ExtractedString,
+  GlobalyzeConfig,
+  TranslationResult
+} from "../types";
 import { loadGlobalyzeConfig, toRelativePosixPath } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
 
@@ -38,6 +42,7 @@ export function registerRunCommand(program: Command): void {
           () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
           "Loaded configuration"
         );
+        logger.hint("Press Ctrl+C at any time to stop Globalyze safely.");
         const files = await logger.step(
           "Scanning source files",
           () => scanProjectFiles(config),
@@ -80,26 +85,42 @@ export function registerRunCommand(program: Command): void {
           keySourceStrings,
           keyResult.keysByText
         );
-        await logger.step(
+        const localeSync = await logger.step(
           "Syncing locale files",
           () => syncLocaleFiles(config, buildSourceLocale(keyAssignments)),
           () => `Updated locale files in ${config.localesDir}`
         );
-        const translation = await logger.step(
-          "Translating locale files",
-          () => translateLocales(config),
-          (result) =>
-            `Translated ${String(result.translatedLocales.length)} languages${
-              result.usedMockTranslations
-                ? " using English fallback values"
-                : ""
-            }`
-        );
+        let translation: TranslationResult = {
+          translatedLocales: [],
+          usedMockTranslations: false,
+          skippedReason: "No source locale keys exist yet."
+        };
+
+        if (localeSync.sourceKeyCount > 0) {
+          translation = await logger.step(
+            "Translating locale files",
+            () => translateLocales(config),
+            (result) =>
+              `Translated ${String(result.translatedLocales.length)} languages${
+                result.usedMockTranslations
+                  ? " using English fallback values"
+                  : ""
+              }`
+          );
+        } else {
+          logger.warn("Skipping translation because no source locale keys exist yet.");
+        }
 
         if (translation.usedMockTranslations) {
           logger.warn(
             "LINGO_API_KEY is not set, so English source values were copied to target locales."
           );
+        }
+        if (localeSync.removed.length > 0) {
+          logger.info(`Removed stale locales: ${localeSync.removed.join(", ")}`);
+        }
+        if (translation.skippedReason) {
+          logger.info(translation.skippedReason);
         }
 
         const updatedFiles = transformedFiles.filter((item) => item.updated);

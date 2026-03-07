@@ -1,5 +1,7 @@
 import path from "node:path";
 
+import fs from "fs-extra";
+
 import type {
   KeyAssignment,
   LocaleDictionary,
@@ -37,8 +39,31 @@ export async function syncLocaleFiles(
   config: ResolvedGlobalyzeConfig,
   sourceLocale: LocaleDictionary
 ): Promise<LocaleSyncResult> {
+  const effectiveSourceLocale =
+    Object.keys(sourceLocale).length > 0
+      ? sourceLocale
+      : await readLocaleDictionary(config, config.sourceLocale);
   const created: string[] = [];
   const updated: string[] = [];
+  const removed: string[] = [];
+
+  if (await pathExists(config.localesDir)) {
+    const existingLocaleFiles = (await fs.readdir(config.localesDir))
+      .filter((fileName) => fileName.endsWith(".json"))
+      .map((fileName) => ({
+        fileName,
+        language: fileName.replace(/\.json$/, "")
+      }));
+
+    for (const localeFile of existingLocaleFiles) {
+      if (config.languages.includes(localeFile.language)) {
+        continue;
+      }
+
+      await fs.remove(path.join(config.localesDir, localeFile.fileName));
+      removed.push(localeFile.language);
+    }
+  }
 
   for (const language of config.languages) {
     const localePath = getLocaleFilePath(config, language);
@@ -46,7 +71,7 @@ export async function syncLocaleFiles(
     const current = (await readJsonFile(localePath)) ?? {};
     const nextLocale: LocaleDictionary = {};
 
-    for (const [key, englishValue] of Object.entries(sourceLocale)) {
+    for (const [key, englishValue] of Object.entries(effectiveSourceLocale)) {
       if (language === config.sourceLocale) {
         nextLocale[key] = englishValue;
         continue;
@@ -66,7 +91,9 @@ export async function syncLocaleFiles(
 
   return {
     created,
-    updated
+    updated,
+    removed,
+    sourceKeyCount: Object.keys(effectiveSourceLocale).length
   };
 }
 

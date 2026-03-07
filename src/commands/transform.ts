@@ -37,6 +37,7 @@ export function registerTransformCommand(program: Command): void {
           () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
           "Loaded configuration"
         );
+        logger.hint("Press Ctrl+C at any time to stop Globalyze safely.");
         const files = await logger.step(
           "Scanning source files",
           () => scanProjectFiles(config),
@@ -93,6 +94,14 @@ export function registerTransformCommand(program: Command): void {
 
         if (localeSync.created.length > 0) {
           logger.info(`Created locales: ${localeSync.created.join(", ")}`);
+        }
+        if (localeSync.removed.length > 0) {
+          logger.info(`Removed stale locales: ${localeSync.removed.join(", ")}`);
+        }
+        if (localeSync.sourceKeyCount === 0) {
+          logger.warn(
+            "No source locale keys exist yet. Locale files were synced, but there was nothing to translate."
+          );
         }
       }
     );

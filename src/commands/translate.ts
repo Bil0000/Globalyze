@@ -40,6 +40,7 @@ export function registerTranslateCommand(program: Command): void {
           () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
           "Loaded configuration"
         );
+        logger.hint("Press Ctrl+C at any time to stop Globalyze safely.");
 
         if (options.check) {
           await logger.step(
