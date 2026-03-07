@@ -41,12 +41,42 @@ describe("config commands", () => {
     expect(contents).toContain(
       'ignore: ["node_modules", "dist", "build", ".next", ".git"],'
     );
+    expect(contents).toContain("translationInstructions:");
     expect(contents).toContain('sourceLocale: "en"');
     expect(contents).toContain('openAiModel: "gpt-4o-mini"');
     expect(contents).toContain('geminiModel: "gemini-2.5-flash-lite"');
     expect(contents).toContain("aiBatchSize: 20");
     expect(contents).toContain('translationImportPath: "@/i18n"');
     expect(contents).toContain('translationFunctionName: "t"');
+  });
+
+  it("infers editable translation instructions from the current app", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-init-context-"));
+    tempDirectories.push(rootDir);
+    process.chdir(rootDir);
+
+    await mkdir(path.join(rootDir, "src"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "src", "page.tsx"),
+      [
+        "export default function Page() {",
+        '  return <button>Book appointment</button>;',
+        "}",
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+
+    await executeInitCommand();
+
+    const contents = await readFile(
+      path.join(rootDir, "globalyze.config.ts"),
+      "utf8"
+    );
+
+    expect(contents).toContain("translationInstructions:");
+    expect(contents).toContain("scheduling");
+    expect(contents).toContain("bookings");
   });
 
   it("adds languages from the CLI and creates translated locale files", async () => {

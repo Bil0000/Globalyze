@@ -37,6 +37,19 @@ function coerceTranslatedLocale(
   return output;
 }
 
+function buildTranslationHints(
+  sourceLocale: LocaleDictionary,
+  translationInstructions: readonly string[]
+): Record<string, string[]> | undefined {
+  if (translationInstructions.length === 0) {
+    return undefined;
+  }
+
+  return Object.fromEntries(
+    Object.keys(sourceLocale).map((key) => [key, [...translationInstructions]])
+  );
+}
+
 export async function translateLocales(
   config: ResolvedGlobalyzeConfig
 ): Promise<TranslationResult> {
@@ -77,12 +90,17 @@ export async function translateLocales(
     ...(config.lingoApiUrl ? { baseUrl: config.lingoApiUrl } : {})
   });
   const fallbackWarnings: string[] = [];
+  const hints = buildTranslationHints(
+    sourceLocale,
+    config.translationInstructions
+  );
 
   for (const language of targetLanguages) {
     try {
       const translated = await engine.localizeObject(sourceLocale, {
         sourceLocale: config.sourceLocale,
-        targetLocale: language
+        targetLocale: language,
+        ...(hints ? { hints } : {})
       });
 
       await writeLocaleDictionary(

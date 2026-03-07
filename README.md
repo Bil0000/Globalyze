@@ -339,6 +339,11 @@ export default {
   localesDir: "locales",
   languages: ["en", "ar", "fr", "de"],
   ignore: ["node_modules", "dist", "build", ".next", ".git"],
+  translationInstructions: [
+    "This is a Next.js commerce application.",
+    "Use natural commerce wording for pricing, checkout, orders, and purchase actions.",
+    "Do not translate brand names or product names unless they are already localized."
+  ],
   sourceLocale: "en",
   openAiModel: "gpt-4o-mini",
   geminiModel: "gemini-2.5-flash-lite",
@@ -354,6 +359,7 @@ export default {
 - `localesDir`: directory where locale JSON files are stored
 - `languages`: supported locales
 - `ignore`: ignored directories
+- `translationInstructions`: editable translation context inferred during `globalyze init` and forwarded to Lingo as per-key hints
 - `sourceLocale`: canonical source locale, default `en`
 - `openAiModel`: OpenAI model for key generation
 - `geminiModel`: Gemini model used only when OpenAI key generation is rate-limited

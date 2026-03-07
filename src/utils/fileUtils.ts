@@ -31,6 +31,11 @@ const DEFAULT_CONFIG: Omit<ResolvedGlobalyzeConfig, "rootDir" | "sourceDir" | "l
   {
     languages: ["en", "ar", "fr", "de"],
     ignore: DEFAULT_IGNORE,
+    translationInstructions: [
+      "This is a React application with user-facing UI text.",
+      "Keep labels, actions, and short UI text concise and natural for the target locale.",
+      "Do not translate brand names or product names unless they are already localized."
+    ],
     sourceLocale: "en",
     openAiModel: "gpt-4o-mini",
     geminiModel: "gemini-2.5-flash-lite",
@@ -48,6 +53,18 @@ function formatStringArray(values: readonly string[]): string {
   return `[${values.map((value) => quoteString(value)).join(", ")}]`;
 }
 
+function formatInstructionArray(values: readonly string[]): string {
+  if (values.length === 0) {
+    return "[]";
+  }
+
+  return [
+    "[",
+    ...values.map((value) => `    ${quoteString(value)},`),
+    "  ]"
+  ].join("\n");
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -63,6 +80,19 @@ function normalizeLanguageList(input: unknown, fallback: readonly string[]): str
     .filter(Boolean);
 
   return languages.length > 0 ? [...new Set(languages)] : [...fallback];
+}
+
+function normalizeStringList(input: unknown, fallback: readonly string[]): string[] {
+  if (!Array.isArray(input)) {
+    return [...fallback];
+  }
+
+  const values = input
+    .filter((value): value is string => typeof value === "string")
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return values.length > 0 ? [...values] : [...fallback];
 }
 
 function resolveOptionalString(input: unknown, fallback: string): string {
@@ -205,7 +235,8 @@ export function normalizeLanguageCodes(
 }
 
 export function createDefaultConfigContents(
-  languages: readonly string[] = DEFAULT_CONFIG.languages
+  languages: readonly string[] = DEFAULT_CONFIG.languages,
+  translationInstructions: readonly string[] = DEFAULT_CONFIG.translationInstructions
 ): string {
   return [
     "export default {",
@@ -213,6 +244,7 @@ export function createDefaultConfigContents(
     '  localesDir: "locales",',
     `  languages: ${formatStringArray(languages)},`,
     `  ignore: ${formatStringArray(DEFAULT_IGNORE)},`,
+    `  translationInstructions: ${formatInstructionArray(translationInstructions)},`,
     `  sourceLocale: ${quoteString(DEFAULT_CONFIG.sourceLocale)},`,
     `  openAiModel: ${quoteString(DEFAULT_CONFIG.openAiModel)},`,
     `  geminiModel: ${quoteString(DEFAULT_CONFIG.geminiModel)},`,
@@ -232,6 +264,7 @@ export function createConfigContents(
     | "localesDir"
     | "languages"
     | "ignore"
+    | "translationInstructions"
     | "sourceLocale"
     | "openAiModel"
     | "geminiModel"
@@ -249,6 +282,7 @@ export function createConfigContents(
     `  localesDir: ${quoteString(relativeLocalesDir)},`,
     `  languages: ${formatStringArray(config.languages)},`,
     `  ignore: ${formatStringArray(config.ignore)},`,
+    `  translationInstructions: ${formatInstructionArray(config.translationInstructions)},`,
     `  sourceLocale: ${quoteString(config.sourceLocale)},`,
     `  openAiModel: ${quoteString(config.openAiModel)},`,
     `  geminiModel: ${quoteString(config.geminiModel)},`,
@@ -348,6 +382,11 @@ export async function loadGlobalyzeConfig(
   assertOptionalString("localesDir", mergedConfig.localesDir, resolvedConfigPath);
   assertOptionalStringArray("languages", mergedConfig.languages, resolvedConfigPath);
   assertOptionalStringArray("ignore", mergedConfig.ignore, resolvedConfigPath);
+  assertOptionalStringArray(
+    "translationInstructions",
+    mergedConfig.translationInstructions,
+    resolvedConfigPath
+  );
   assertOptionalString(
     "sourceLocale",
     mergedConfig.sourceLocale,
@@ -398,6 +437,10 @@ export async function loadGlobalyzeConfig(
       DEFAULT_CONFIG.languages
     ),
     ignore: normalizeLanguageList(mergedConfig.ignore, DEFAULT_CONFIG.ignore),
+    translationInstructions: normalizeStringList(
+      mergedConfig.translationInstructions,
+      DEFAULT_CONFIG.translationInstructions
+    ),
     sourceLocale: resolveOptionalString(
       mergedConfig.sourceLocale,
       DEFAULT_CONFIG.sourceLocale

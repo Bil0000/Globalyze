@@ -1,5 +1,6 @@
 import { Command } from "commander";
 
+import { inferTranslationInstructions } from "../context/appContext";
 import {
   createDefaultConfigContents,
   normalizeLanguageCodes,
@@ -40,11 +41,16 @@ export async function executeInitCommand(
   const languages = options.langs
     ? normalizeLanguageCodes(options.langs.split(","))
     : undefined;
+  const translationInstructions = await inferTranslationInstructions(process.cwd());
 
-  await writeTextFile(configPath, createDefaultConfigContents(languages));
+  await writeTextFile(
+    configPath,
+    createDefaultConfigContents(languages, translationInstructions)
+  );
   logger.success(
     `created ${configPath}${
       languages ? ` with languages ${languages.join(", ")}` : ""
     }`
   );
+  logger.info("Added editable translationInstructions based on the current app.");
 }

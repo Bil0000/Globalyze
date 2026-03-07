@@ -3,6 +3,11 @@ export default {
   localesDir: "examples/demo-nextjs/locales",
   languages: ["en", "ar", "fr", "de"],
   ignore: ["node_modules", "dist", "build", ".next", ".git"],
+  translationInstructions: [
+    "This is a Next.js marketing application.",
+    "Keep marketing copy and CTA labels short, natural, and persuasive.",
+    "Do not translate brand names or product names unless they are already localized."
+  ],
   sourceLocale: "en",
   openAiModel: "gpt-4o-mini",
   geminiModel: "gemini-2.5-flash-lite",

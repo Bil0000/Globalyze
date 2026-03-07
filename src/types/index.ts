@@ -10,6 +10,7 @@ export interface GlobalyzeConfig {
   localesDir: string;
   languages: string[];
   ignore?: string[];
+  translationInstructions?: string[];
   sourceLocale?: string;
   openAiModel?: string;
   geminiModel?: string;
@@ -25,6 +26,7 @@ export interface ResolvedGlobalyzeConfig {
   localesDir: string;
   languages: string[];
   ignore: string[];
+  translationInstructions: string[];
   sourceLocale: string;
   openAiModel: string;
   geminiModel: string;

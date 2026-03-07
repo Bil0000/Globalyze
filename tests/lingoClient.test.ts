@@ -11,10 +11,18 @@ const localizeObjectMock = mock(async () => {
   await Promise.resolve();
   throw new Error("network unavailable");
 });
+const localizeObjectCalls: {
+  sourceLocale: Record<string, string>;
+  params: Record<string, unknown>;
+}[] = [];
 
 void mock.module("lingo.dev/sdk", () => ({
   LingoDotDevEngine: class {
-    async localizeObject() {
+    async localizeObject(
+      sourceLocale: Record<string, string>,
+      params: Record<string, unknown>
+    ) {
+      localizeObjectCalls.push({ sourceLocale, params });
       return localizeObjectMock();
     }
   }
@@ -39,6 +47,7 @@ describe("translateLocales", () => {
     }
 
     localizeObjectMock.mockClear();
+    localizeObjectCalls.length = 0;
   });
 
   it("falls back to English values when the translation API fails", async () => {
@@ -61,6 +70,38 @@ describe("translateLocales", () => {
     expect(result.skippedReason).toContain("Lingo.dev translation failed for fr");
     expect(locale).toEqual({
       "checkout.buy_button": "Buy now"
+    });
+  });
+
+  it("passes translation instructions as Lingo hints", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-lingo-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      languages: ["en", "fr"],
+      translationInstructions: [
+        "This is a commerce app.",
+        "Use natural checkout terminology."
+      ]
+    });
+
+    await syncLocaleFiles(config, {
+      "checkout.buy_button": "Buy now"
+    });
+    process.env.LINGO_API_KEY = "test-key";
+
+    await translateLocales(config);
+
+    expect(localizeObjectCalls).toHaveLength(1);
+    expect(localizeObjectCalls[0]?.params).toMatchObject({
+      sourceLocale: "en",
+      targetLocale: "fr",
+      hints: {
+        "checkout.buy_button": [
+          "This is a commerce app.",
+          "Use natural checkout terminology."
+        ]
+      }
     });
   });
 });
