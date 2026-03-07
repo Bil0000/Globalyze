@@ -1,38 +1,39 @@
 # Globalyze
 
-Globalyze is a Bun-powered CLI that internationalizes React and Next.js applications by scanning for hardcoded UI strings, generating semantic i18n keys, transforming source code, generating locale files, and translating those locale files automatically.
+Globalyze is a Bun-powered CLI that internationalizes React and Next.js apps by finding hardcoded UI strings, generating semantic translation keys, rewriting source code, creating locale files, and validating localization quality in CI.
 
-## What it does
+## Why Globalyze
 
-Globalyze automates the repetitive parts of app internationalization:
+Internationalization usually starts late and turns into a cleanup project:
 
-1. scans a project for React source files
-2. extracts hardcoded UI strings from JSX
-3. generates semantic i18n keys with OpenAI
-4. falls back to deterministic slug-based keys if AI is unavailable
-5. rewrites JSX to use translation calls
-6. generates locale files
-7. translates locales with Lingo.dev
-8. validates translation coverage in CI
-9. previews and scores i18n changes before writing them
-10. watches source trees for new hardcoded UI strings
-11. scans screenshots for UI text missing from locales
+- hardcoded strings are scattered across JSX
+- translation keys are inconsistent or meaningless
+- locale files drift from source code
+- PRs introduce untranslated copy with no enforcement
 
-## Before and after
+Globalyze automates that workflow so teams can move from hardcoded UI copy to structured locale files with a CLI-first developer experience.
 
-Before:
+## Quick Demo
+
+Input:
 
 ```tsx
 <button>Checkout</button>
 ```
 
-After:
+Run:
+
+```bash
+globalyze run
+```
+
+Output:
 
 ```tsx
 <button>{t("checkout.button")}</button>
 ```
 
-Generated locale:
+Generated locale entry:
 
 ```json
 {
@@ -40,16 +41,47 @@ Generated locale:
 }
 ```
 
-## Requirements
+## Feature Overview
 
-- [Bun](https://bun.sh/) 1.2.20 or newer
-- Node-compatible environment for Bun
-- OpenAI API key if you want semantic AI key generation
-- Lingo.dev API key if you want real translations instead of fallback copies
+- Scans React and Next.js source trees for `.ts`, `.tsx`, `.js`, and `.jsx`
+- Extracts JSX text, string literals inside JSX, and selected translatable JSX attributes
+- Generates semantic i18n keys with OpenAI using `gpt-4o-mini`
+- Reuses similar existing keys for small copy changes
+- Falls back to deterministic slug-based keys when AI is unavailable
+- Rewrites source files with Babel AST transforms
+- Injects the configured translation import automatically
+- Creates and synchronizes locale JSON files
+- Translates target locales with Lingo.dev
+- Falls back to English values when translation credentials or network access are unavailable
+- Checks translation coverage and reports missing keys
+- Scores repository i18n quality
+- Previews transformations without writing files
+- Watches source files for new hardcoded strings
+- Scans screenshots with OCR to find text missing from locale files
+- Includes an interactive CLI when `globalyze` is run without a command
+- Ships with a GitHub Actions workflow for auto-fix and enforcement
 
-## Repository setup
+## Supported Projects
 
-Clone the repository and install dependencies:
+Globalyze currently targets:
+
+- React applications
+- Next.js applications
+
+The parser and scanner support:
+
+- `.ts`
+- `.tsx`
+- `.js`
+- `.jsx`
+
+## Installation
+
+Requirements:
+
+- [Bun](https://bun.sh/) `>= 1.2.20`
+
+Clone and install:
 
 ```bash
 git clone <your-repo-url>
@@ -57,24 +89,255 @@ cd globalyze
 bun install
 ```
 
-## Global CLI usage
+Run from source:
 
-Globalyze can be used as a repo-local CLI or as a globally available system command.
+```bash
+bun run globalyze --help
+```
 
-Best workflows:
-
-- maintainer workflow: use a global link from your local checkout while iterating quickly
-- user workflow: install directly from GitHub, then run `globalyze` inside any target app
-
-### Maintainer workflow: link your local checkout globally
-
-From the Globalyze repository root:
+Make the CLI available globally from your local checkout:
 
 ```bash
 bun link
 ```
 
-After that, from another project:
+After that:
+
+```bash
+globalyze --help
+```
+
+Install directly from GitHub:
+
+```bash
+bun add -g github:<owner>/<repo>
+```
+
+## Quick Start
+
+### 1. Initialize a project
+
+Inside the target repository:
+
+```bash
+globalyze init
+```
+
+This creates `globalyze.config.ts`.
+
+### 2. Scan for hardcoded strings
+
+```bash
+globalyze scan
+```
+
+### 3. Preview what will change
+
+```bash
+globalyze preview
+```
+
+### 4. Transform source and create locale files
+
+```bash
+globalyze transform
+```
+
+### 5. Translate locale files
+
+```bash
+globalyze translate
+```
+
+### 6. Run the full pipeline
+
+```bash
+globalyze run
+```
+
+## Environment Variables
+
+Globalyze loads `.env` and `.env.local` from the Globalyze repository or installed package root.
+
+Common variables:
+
+```bash
+OPENAI_API_KEY=your_openai_key
+LINGO_API_KEY=your_lingo_key
+```
+
+Behavior when keys are missing:
+
+- No `OPENAI_API_KEY`: Globalyze uses deterministic fallback keys
+- No `LINGO_API_KEY`: Globalyze copies English source values into target locales
+
+## CLI Commands
+
+### `globalyze`
+
+Launches the interactive menu.
+
+### `globalyze init`
+
+Creates `globalyze.config.ts` in the current directory.
+
+Options:
+
+- `-f, --force` overwrite an existing config file
+
+### `globalyze scan`
+
+Scans the configured source tree and prints detected hardcoded UI strings.
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+- `--json`
+- `--fail-on-findings`
+
+### `globalyze preview`
+
+Runs the transform pipeline in memory and prints before/after output plus a diff.
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+
+### `globalyze transform`
+
+Extracts strings, generates keys, rewrites source files, and syncs locale files.
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+
+### `globalyze translate`
+
+Translates locale files using Lingo.dev.
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+- `--check` validate locale coverage without translating
+
+### `globalyze report`
+
+Shows translation coverage by language and lists missing keys.
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+
+### `globalyze score`
+
+Generates an i18n quality score from coverage, hardcoded string count, and locale health.
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+
+### `globalyze screenshot <image>`
+
+Runs OCR on a screenshot and flags text missing from locale files.
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+
+### `globalyze watch`
+
+Watches the source directory for new hardcoded strings, transforms changed files, and syncs locales.
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+
+Note:
+
+- `watch` updates locale files but does not automatically perform a separate translation pass for new keys; run `globalyze translate` or `globalyze run` if you want target locale values refreshed immediately
+
+### `globalyze run`
+
+Runs the full pipeline:
+
+1. scan files
+2. extract strings
+3. generate keys
+4. transform source
+5. sync locale files
+6. translate target locales
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+
+## Configuration
+
+Globalyze is configured with `globalyze.config.ts`.
+
+Example:
+
+```ts
+export default {
+  sourceDir: "src",
+  localesDir: "locales",
+  languages: ["en", "ar", "fr", "de"],
+  ignore: ["node_modules", "dist", "build", ".next", ".git"],
+  sourceLocale: "en",
+  aiModel: "gpt-4o-mini",
+  aiBatchSize: 20,
+  translationImportPath: "@/i18n",
+  translationFunctionName: "t"
+};
+```
+
+### Config fields
+
+- `sourceDir`: source directory to scan
+- `localesDir`: directory where locale JSON files are stored
+- `languages`: supported locales
+- `ignore`: ignored directories
+- `sourceLocale`: canonical source locale, default `en`
+- `aiModel`: OpenAI model for key generation
+- `aiBatchSize`: number of strings per key-generation batch
+- `translationImportPath`: import path to inject when transforming source
+- `translationFunctionName`: translation function name to call in transformed JSX
+- `lingoApiUrl`: optional custom Lingo API base URL
+
+## Using Globalyze On Another Repository
+
+Create a config file in the target repository and run Globalyze from there.
+
+Example for a separate app in `/Users/bilal/Documents/Calendaty`:
+
+```ts
+export default {
+  sourceDir: "src",
+  localesDir: "locales",
+  languages: ["en", "ar", "fr", "de"],
+  ignore: ["node_modules", "dist", "build", ".next", ".git"]
+};
+```
+
+Then:
 
 ```bash
 cd /Users/bilal/Documents/Calendaty
@@ -83,123 +346,101 @@ globalyze scan
 globalyze run
 ```
 
-This is the best option while the CLI is changing frequently, because edits in your local Globalyze checkout are immediately testable from other repositories.
+## Interactive CLI
 
-### User workflow: install directly from GitHub
+Running `globalyze` with no arguments opens a prompt-driven menu powered by `@clack/prompts`.
 
-Users can install Globalyze globally from GitHub with Bun.
+Available actions:
 
-Example:
+- Scan project for strings
+- Preview transformations
+- Transform source code
+- Generate translations
+- Watch for new strings
+- Analyze screenshot
+- Run full pipeline
+- Show translation report
+- Show project score
 
-```bash
-bun add -g github:<owner>/<repo>
-```
+## CI And Automation
 
-For a concrete repository, that becomes:
+Globalyze includes a GitHub Actions workflow at [.github/workflows/globalyze.yml](/Users/bilal/Documents/globalyze/.github/workflows/globalyze.yml).
 
-```bash
-bun add -g github:your-org/globalyze
-```
+Current workflow behavior:
 
-After installation, users can run:
+- runs on `pull_request`
+- installs Bun dependencies
+- runs `globalyze run`
+- commits generated changes with `globalyze bot: add missing translations`
+- pushes fixes back to the PR branch when allowed
+- runs `globalyze scan --fail-on-findings`
+- runs `globalyze translate --check`
 
-```bash
-globalyze init
-globalyze scan
-globalyze run
-```
+Fork limitation:
 
-from inside the target project directory.
+- GitHub Actions cannot push fixes back to forked pull requests with the current permissions model
 
-### What `globalyze init` does in another repo
+To use the same automation in another repository:
 
-When run inside another project, `globalyze init` creates `globalyze.config.ts` in the current working directory. After that, `scan`, `transform`, `translate`, and `run` use that local config automatically.
+1. copy the workflow file into that repository
+2. install Globalyze there or make it available globally
+3. add `globalyze.config.ts`
+4. configure secrets such as `LINGO_API_KEY` if you want real translations
 
-## Environment variables
+## Demo Project
 
-You can still export variables in your terminal:
+The repository includes a demo Next.js app in [examples/demo-nextjs](/Users/bilal/Documents/globalyze/examples/demo-nextjs).
 
-```bash
-export OPENAI_API_KEY=your_openai_key
-export LINGO_API_KEY=your_lingo_key
-```
-
-You can also add them to your shell profile such as `~/.zshrc`:
-
-```bash
-export OPENAI_API_KEY=your_openai_key
-export LINGO_API_KEY=your_lingo_key
-```
-
-Then reload your shell:
-
-```bash
-source ~/.zshrc
-```
-
-Recommended setup for real usage:
-
-Create a `.env` file in the Globalyze repository root:
-
-```bash
-OPENAI_API_KEY=your_openai_key
-LINGO_API_KEY=your_lingo_key
-```
-
-Globalyze now loads:
-
-- `.env`
-- `.env.local`
-
-from the main Globalyze repository or installed package root.
-
-That means once you set the keys in Globalyze’s own `.env`, you do not need to export them in each terminal session, and target projects do not need their own `.env` files for Globalyze to work.
-
-Current behavior if variables are missing:
-
-- no `OPENAI_API_KEY`: Globalyze generates deterministic fallback keys
-- no `LINGO_API_KEY`: Globalyze copies English strings into the other locale files
-
-Existing shell environment variables still take precedence over `.env` values.
-
-## Default repository behavior
-
-The checked-in [globalyze.config.ts](/Users/bilal/Documents/globalyze/globalyze.config.ts) points to the included demo app:
+The checked-in root config points to that demo:
 
 - source: `examples/demo-nextjs/src`
 - locales: `examples/demo-nextjs/locales`
 
-That means this works immediately from the repo root:
+That means you can try the tool immediately from the repository root.
 
-```bash
-bun run globalyze run
-```
+## Architecture Overview
 
-Preview changes without modifying files:
+Globalyze is organized as a small set of focused modules:
 
-```bash
-bun run globalyze preview
-```
+- `src/scanner`
+  Finds candidate source files with `fast-glob`
+- `src/extractor`
+  Parses files with Babel and extracts UI strings or existing translation keys
+- `src/ai`
+  Generates semantic keys with OpenAI and handles similarity-based key reuse
+- `src/transformer`
+  Rewrites JSX AST nodes and injects the translation import
+- `src/i18n`
+  Builds, merges, syncs, and validates locale dictionaries
+- `src/lingo`
+  Handles translation via Lingo.dev with safe English fallback behavior
+- `src/report`
+  Computes translation coverage and project score summaries
+- `src/preview`
+  Produces in-memory diffs for transform previews
+- `src/watch`
+  Watches source changes and performs incremental updates
+- `src/ocr`
+  Extracts screenshot text with Tesseract and compares it to locale values
+- `src/commands`
+  Implements each CLI command
+- `src/cli`
+  Wires Commander, interactive mode, and shared pipeline helpers
+- `src/utils`
+  Config loading, logging, progress, interrupts, and shared filesystem helpers
 
-Watch for new strings during development:
+High-level flow:
 
-```bash
-bun run globalyze watch
-```
+1. load config and environment
+2. scan source files
+3. extract candidate UI strings
+4. generate or reuse translation keys
+5. transform source files
+6. sync locale files
+7. optionally translate target locales
+8. validate/report in CI and local workflows
 
-Analyze a screenshot for UI text missing from locales:
-
-```bash
-bun run globalyze screenshot ./captures/checkout.png
-```
-
-Score the repository’s current i18n health:
-
-```bash
-bun run globalyze score
-```
-
-## Local development commands
+## Development Workflow
 
 Install dependencies:
 
@@ -207,7 +448,7 @@ Install dependencies:
 bun install
 ```
 
-Run unit tests:
+Run tests:
 
 ```bash
 bun test
@@ -219,319 +460,11 @@ Run lint:
 bun run lint
 ```
 
-Run TypeScript validation:
+Type-check:
 
 ```bash
 ./node_modules/.bin/tsc --noEmit
 ```
-
-## Interactive CLI
-
-Running `globalyze` without a command opens an interactive menu so you can launch the main workflows without remembering subcommands.
-
-Available actions include:
-
-- scan project for strings
-- preview transformations
-- transform source code
-- generate translations
-- watch for new strings
-- analyze a screenshot
-- show translation report
-- show project score
-- run the full pipeline
-
-## Preview mode
-
-Preview source transformations without writing files:
-
-```bash
-globalyze preview
-```
-
-This runs the existing transform pipeline in memory and prints:
-
-- the original source snippet
-- the transformed source snippet
-- a unified diff for each changed file
-
-## Watch mode
-
-Watch the configured source directory for new hardcoded UI strings:
-
-```bash
-globalyze watch
-```
-
-When changes are detected, Globalyze:
-
-1. rescans the project
-2. detects newly introduced UI strings
-3. reuses existing keys for similar copy changes when possible
-4. transforms affected files
-5. syncs locale files
-
-## Screenshot detection
-
-Analyze a screenshot and compare OCR text against your locale files:
-
-```bash
-globalyze screenshot ./captures/checkout.png
-```
-
-This helps catch UI text that appears in the app but is missing from your localization dictionaries.
-
-## Repository score
-
-Generate a high-level internationalization score for the current project:
-
-```bash
-globalyze score
-```
-
-The score combines:
-
-- translation coverage
-- remaining hardcoded UI strings
-- locale completeness
-- unused locale keys
-
-## How to test the CLI in this repository
-
-### 1. Scan the demo app
-
-```bash
-bun run globalyze scan
-```
-
-This prints detected hardcoded JSX strings from the demo project.
-
-### 2. Run the full pipeline
-
-```bash
-bun run globalyze run
-```
-
-This will:
-
-1. scan the demo source tree
-2. extract strings
-3. generate translation keys
-4. transform JSX files
-5. write locale files
-6. translate target locales
-
-### 3. Inspect the results
-
-Check transformed source files:
-
-- [examples/demo-nextjs/src/app/page.tsx](/Users/bilal/Documents/globalyze/examples/demo-nextjs/src/app/page.tsx)
-- [examples/demo-nextjs/src/components/MarketingHero.tsx](/Users/bilal/Documents/globalyze/examples/demo-nextjs/src/components/MarketingHero.tsx)
-- [examples/demo-nextjs/src/components/PricingSection.tsx](/Users/bilal/Documents/globalyze/examples/demo-nextjs/src/components/PricingSection.tsx)
-
-Check generated locale files:
-
-- [examples/demo-nextjs/locales/en.json](/Users/bilal/Documents/globalyze/examples/demo-nextjs/locales/en.json)
-- [examples/demo-nextjs/locales/ar.json](/Users/bilal/Documents/globalyze/examples/demo-nextjs/locales/ar.json)
-- [examples/demo-nextjs/locales/fr.json](/Users/bilal/Documents/globalyze/examples/demo-nextjs/locales/fr.json)
-- [examples/demo-nextjs/locales/de.json](/Users/bilal/Documents/globalyze/examples/demo-nextjs/locales/de.json)
-
-### 4. Validate translation coverage
-
-```bash
-bun run globalyze translate --check
-```
-
-This fails if any non-source locale file has missing or empty keys.
-
-### 5. Run CI-style checks locally
-
-```bash
-bun run globalyze scan --fail-on-findings
-bun run globalyze translate --check
-```
-
-This simulates the behavior of the GitHub Actions workflow.
-
-## CLI commands
-
-Initialize a new config:
-
-```bash
-bun run globalyze init
-```
-
-## Interactive CLI
-
-Running `globalyze` with no arguments launches an interactive menu:
-
-```bash
-globalyze
-```
-
-Available actions:
-
-- Scan project for strings
-- Transform source code
-- Generate translations
-- Run full pipeline
-- Show translation report
-- Exit
-
-The interactive menu routes to the same command implementations used by the standard CLI commands.
-
-Scan a project:
-
-```bash
-bun run globalyze scan
-```
-
-Scan and print JSON:
-
-```bash
-bun run globalyze scan --json
-```
-
-Transform files and sync locales:
-
-```bash
-bun run globalyze transform
-```
-
-Translate locales:
-
-```bash
-bun run globalyze translate
-```
-
-Generate a translation coverage report:
-
-```bash
-bun run globalyze report
-```
-
-Check translation coverage:
-
-```bash
-bun run globalyze translate --check
-```
-
-Run the full pipeline:
-
-```bash
-bun run globalyze run
-```
-
-Override directories without editing config:
-
-```bash
-bun run globalyze run --source-dir ./src --locales-dir ./locales
-```
-
-Use a custom config file:
-
-```bash
-bun run globalyze run --config ./globalyze.config.ts
-```
-
-## Running Globalyze on another project
-
-You have two practical ways to run Globalyze against a separate app.
-
-### Concrete example: `/Users/bilal/Documents/Calendaty`
-
-If your target app lives at:
-
-```text
-/Users/bilal/Documents/Calendaty
-```
-
-create this file:
-
-```text
-/Users/bilal/Documents/Calendaty/globalyze.config.ts
-```
-
-with:
-
-```ts
-export default {
-  sourceDir: "src",
-  localesDir: "locales",
-  languages: ["en", "ar", "fr", "de"],
-  ignore: ["node_modules", "dist", "build", ".next", ".git"],
-  sourceLocale: "en",
-  aiModel: "gpt-4o-mini",
-  aiBatchSize: 20,
-  translationImportPath: "@/i18n",
-  translationFunctionName: "t"
-};
-```
-
-Then run:
-
-```bash
-cd /Users/bilal/Documents/globalyze
-bun run ./src/index.ts scan --config /Users/bilal/Documents/Calendaty/globalyze.config.ts
-bun run ./src/index.ts transform --config /Users/bilal/Documents/Calendaty/globalyze.config.ts
-bun run ./src/index.ts run --config /Users/bilal/Documents/Calendaty/globalyze.config.ts
-bun run ./src/index.ts translate --check --config /Users/bilal/Documents/Calendaty/globalyze.config.ts
-```
-
-Recommended order for a real repo:
-
-1. run `scan`
-2. review the findings
-3. commit a clean baseline in Calendaty
-4. run `transform`
-5. review the diff
-6. run `run` if you want locale generation and translation too
-
-### Option 1. Run Globalyze from this repository against another folder
-
-Assume your target app lives at:
-
-```text
-/Users/bilal/Documents/my-next-app
-```
-
-Create a config file inside the target app:
-
-```ts
-export default {
-  sourceDir: "src",
-  localesDir: "locales",
-  languages: ["en", "ar", "fr", "de"],
-  ignore: ["node_modules", "dist", "build", ".next", ".git"]
-};
-```
-
-Save it as:
-
-```text
-/Users/bilal/Documents/my-next-app/globalyze.config.ts
-```
-
-Then run Globalyze from this repository root:
-
-```bash
-bun run ./src/index.ts scan --config /Users/bilal/Documents/my-next-app/globalyze.config.ts
-bun run ./src/index.ts transform --config /Users/bilal/Documents/my-next-app/globalyze.config.ts
-bun run ./src/index.ts translate --config /Users/bilal/Documents/my-next-app/globalyze.config.ts
-bun run ./src/index.ts run --config /Users/bilal/Documents/my-next-app/globalyze.config.ts
-```
-
-Important detail:
-
-- paths inside `globalyze.config.ts` are resolved relative to the config file location, not this repo
-
-So `sourceDir: "src"` means:
-
-```text
-/Users/bilal/Documents/my-next-app/src
-```
-
-### Option 2. Build or link the CLI and use it from another repo
 
 Build the CLI:
 
@@ -539,241 +472,25 @@ Build the CLI:
 bun run build
 ```
 
-Or invoke it directly with Bun from anywhere:
+## Contributing
 
-```bash
-bun /Users/bilal/Documents/globalyze/src/index.ts run --config /Users/bilal/Documents/my-next-app/globalyze.config.ts
-```
+Contributions are welcome.
 
-If you want a globally available command during development, you can also use Bun linking tools in your environment, but invoking `src/index.ts` directly is the simplest and most predictable path while iterating.
+Suggested workflow:
 
-## Example config for another project
+1. create a branch
+2. make a focused change
+3. run tests, lint, and type-check locally
+4. update documentation when behavior changes
+5. open a pull request
 
-```ts
-export default {
-  sourceDir: "src",
-  localesDir: "locales",
-  languages: ["en", "ar", "fr", "de"],
-  ignore: ["node_modules", "dist", "build", ".next", ".git"],
-  sourceLocale: "en",
-  aiModel: "gpt-4o-mini",
-  aiBatchSize: 20,
-  translationImportPath: "@/i18n",
-  translationFunctionName: "t"
-};
-```
+When contributing, prefer:
 
-## Expectations when running on another app
-
-Globalyze currently assumes your target app can support:
-
-- an import like `import { t } from "@/i18n";`
-- a translation function named `t`
-
-If your app uses a different import path or helper name, set these in config:
-
-```ts
-export default {
-  sourceDir: "src",
-  localesDir: "locales",
-  languages: ["en", "fr"],
-  translationImportPath: "~/lib/i18n",
-  translationFunctionName: "t"
-};
-```
-
-## Recommended test flow for a separate project
-
-Before transforming a real application, use this order:
-
-### 1. Create the config
-
-```bash
-touch /path/to/app/globalyze.config.ts
-```
-
-### 2. Run scan first
-
-```bash
-bun /Users/bilal/Documents/globalyze/src/index.ts scan --config /path/to/app/globalyze.config.ts
-```
-
-Review the findings before modifying files.
-
-### 3. Commit your app first
-
-Before running transforms on a real repository:
-
-```bash
-git add .
-git commit -m "baseline before globalyze"
-```
-
-### 4. Run transform
-
-```bash
-bun /Users/bilal/Documents/globalyze/src/index.ts transform --config /path/to/app/globalyze.config.ts
-```
-
-### 5. Review the diff
-
-Inspect:
-
-- transformed JSX files
-- generated locale files
-- added `t(...)` imports
-
-### 6. Run the app test suite
-
-Inside the target application, run its normal checks:
-
-```bash
-bun test
-bun run lint
-```
-
-If it is a Next.js app, also run:
-
-```bash
-bun run dev
-```
-
-## Demo project
-
-The included demo app lives in [examples/demo-nextjs](/Users/bilal/Documents/globalyze/examples/demo-nextjs). It intentionally contains hardcoded UI strings so you can verify the full transformation flow end to end.
-
-## Translation Coverage Report
-
-Generate a coverage report from locale files:
-
-```bash
-globalyze report
-```
-
-Example output:
-
-```text
-Globalyze Translation Report
-Source locale: en
-Total keys: 120
-
-Languages
-English    100% (120/120)
-Arabic      96% (115/120)
-French      94% (113/120)
-
-Missing Keys
-
-Arabic
-- checkout.buy_button
-- home.hero_title
-
-French
-- pricing.plan_title
-```
-
-## Architecture
-
-Core modules:
-
-- [src/scanner/projectScanner.ts](/Users/bilal/Documents/globalyze/src/scanner/projectScanner.ts): recursive source discovery with `fast-glob`
-- [src/extractor/stringExtractor.ts](/Users/bilal/Documents/globalyze/src/extractor/stringExtractor.ts): JSX string extraction via Babel AST traversal
-- [src/ai/keyGenerator.ts](/Users/bilal/Documents/globalyze/src/ai/keyGenerator.ts): OpenAI-backed semantic key generation plus deterministic fallback
-- [src/transformer/astTransformer.ts](/Users/bilal/Documents/globalyze/src/transformer/astTransformer.ts): AST-based JSX rewrites and import injection
-- [src/i18n/localeManager.ts](/Users/bilal/Documents/globalyze/src/i18n/localeManager.ts): locale generation and missing-translation detection
-- [src/lingo/lingoClient.ts](/Users/bilal/Documents/globalyze/src/lingo/lingoClient.ts): translation integration with fallback behavior
-- [src/commands](/Users/bilal/Documents/globalyze/src/commands): Commander.js command handlers
-- [src/cli/pipeline.ts](/Users/bilal/Documents/globalyze/src/cli/pipeline.ts): orchestration layer for scan, transform, translate, and full run
-
-## GitHub Actions
-
-The repository ships with [globalyze.yml](/Users/bilal/Documents/globalyze/.github/workflows/globalyze.yml).
-
-It runs on pull requests and uses always-on auto-fix behavior.
-
-Workflow behavior:
-
-1. install dependencies
-2. run `globalyze run`
-3. commit any generated changes
-4. push those changes back to the PR branch when permissions allow it
-5. run enforcement checks afterward:
-   - `globalyze scan --fail-on-findings`
-   - `globalyze translate --check`
-
-This means the workflow tries to fix the branch automatically first, then fails only if problems still remain after the auto-fix pass.
-
-The auto-fix commit message is:
-
-```text
-globalyze bot: add missing translations
-```
-
-If the pull request comes from a fork, GitHub may block the workflow from pushing changes back to the branch. In that case the workflow still runs and reports the limitation, but the contributor must apply the fixes locally.
-
-How to test the workflow locally:
-
-```bash
-bun run ./src/index.ts run
-bun run ./src/index.ts scan --fail-on-findings
-bun run ./src/index.ts translate --check
-```
-
-How to test it in GitHub:
-
-1. push a branch
-2. open a pull request
-3. go to the Actions tab
-4. inspect the `Globalyze` workflow run
-
-If Globalyze can auto-fix the branch, it will commit and push the updates. If it cannot fully resolve the issues, the final enforcement steps will fail and show what still needs attention.
-
-## Troubleshooting
-
-### Missing config file
-
-Error:
-
-```text
-Missing config file at ...
-```
-
-Fix:
-
-```bash
-bun run globalyze init
-```
-
-Or provide `--config /absolute/path/to/globalyze.config.ts`.
-
-### Source directory does not exist
-
-Check that `sourceDir` in your config is correct relative to the config file location.
-
-### Keys look generic
-
-If `OPENAI_API_KEY` is missing or the API call fails, fallback key generation is used.
-
-### Translations are just English copies
-
-If `LINGO_API_KEY` is missing, target locale files are populated with source English text.
-
-### Import path is wrong for your app
-
-Set:
-
-```ts
-translationImportPath: "your/import/path"
-```
-
-### Translation function name differs
-
-Set:
-
-```ts
-translationFunctionName: "yourFunctionName"
-```
+- strict TypeScript with no `any`
+- small, focused modules
+- AST-safe transformations over string manipulation
+- tests for new behavior and regressions
 
 ## License
 
-MIT
+MIT. See [package.json](/Users/bilal/Documents/globalyze/package.json) for the current license declaration.
