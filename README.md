@@ -84,7 +84,7 @@ Requirements:
 Clone and install:
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/Bil0000/Globalyze.git
 cd globalyze
 bun install
 ```
