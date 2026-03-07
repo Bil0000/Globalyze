@@ -5,12 +5,14 @@ import { tmpdir } from "node:os";
 
 import {
   buildSourceLocale,
+  ensureLocaleCoverageReady,
   findMissingTranslationKeys,
   readLocaleDictionary,
   syncLocaleFiles,
   writeLocaleDictionary
 } from "../src/i18n/localeManager";
 import { createTestConfig } from "./testUtils";
+import { GlobalyzeError } from "../src/utils/errors";
 
 describe("localeManager", () => {
   const tempDirectories: string[] = [];
@@ -52,5 +54,18 @@ describe("localeManager", () => {
 
     const missingAfter = await findMissingTranslationKeys(config);
     expect(missingAfter.fr).toEqual([]);
+  });
+
+  it("fails coverage checks with a clear error when locales do not exist", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locales-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir);
+
+    expect(ensureLocaleCoverageReady(config)).rejects.toThrow(
+      new GlobalyzeError(
+        `Locales directory does not exist: ${config.localesDir}. Run "globalyze transform" or "globalyze run" first.`
+      )
+    );
   });
 });
