@@ -1,0 +1,48 @@
+name: Globalyze
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      auto_fix:
+        description: Automatically run Globalyze and commit locale updates
+        required: false
+        default: "false"
+
+permissions:
+  contents: write
+
+jobs:
+  i18n:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Auto-fix translations
+        if: ${{ (github.event_name == 'pull_request' && vars.GLOBALYZE_AUTO_FIX == 'true') || (github.event_name == 'workflow_dispatch' && inputs.auto_fix == 'true') }}
+        run: bun run globalyze run
+
+      - name: Commit locale updates
+        if: ${{ (github.event_name == 'pull_request' && vars.GLOBALYZE_AUTO_FIX == 'true') || (github.event_name == 'workflow_dispatch' && inputs.auto_fix == 'true') }}
+        run: |
+          git config user.name "globalyze bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A examples/demo-nextjs/locales
+          git commit -m "globalyze bot: add missing translations" || echo "No locale changes to commit"
+
+      - name: Scan for hardcoded UI strings
+        if: ${{ !((github.event_name == 'pull_request' && vars.GLOBALYZE_AUTO_FIX == 'true') || (github.event_name == 'workflow_dispatch' && inputs.auto_fix == 'true')) }}
+        run: bun run globalyze scan --fail-on-findings
+
+      - name: Check locale coverage
+        if: ${{ !((github.event_name == 'pull_request' && vars.GLOBALYZE_AUTO_FIX == 'true') || (github.event_name == 'workflow_dispatch' && inputs.auto_fix == 'true')) }}
+        run: bun run globalyze translate --check

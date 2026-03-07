@@ -1,0 +1,7 @@
+node_modules
+dist
+.DS_Store
+.env
+coverage
+examples/demo-nextjs/.next
+examples/demo-nextjs/locales

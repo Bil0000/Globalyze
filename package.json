@@ -1,0 +1,48 @@
+{
+  "name": "globalyze",
+  "version": "0.1.0",
+  "description": "A Bun-powered CLI that internationalizes React and Next.js applications automatically.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "globalyze": "./src/index.ts"
+  },
+  "scripts": {
+    "globalyze": "bun run ./src/index.ts",
+    "build": "bun build ./src/index.ts --outdir dist --target bun",
+    "test": "bun test",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "check": "bun run lint && bun test"
+  },
+  "engines": {
+    "bun": ">=1.2.20"
+  },
+  "dependencies": {
+    "@babel/generator": "^7.28.3",
+    "@babel/parser": "^7.28.4",
+    "@babel/traverse": "^7.28.4",
+    "@babel/types": "^7.28.4",
+    "chalk": "^5.4.1",
+    "commander": "^14.0.1",
+    "fast-glob": "^3.3.3",
+    "fs-extra": "^11.3.2",
+    "lingo.dev": "latest",
+    "log-symbols": "^7.0.1",
+    "openai": "^5.20.2",
+    "ora": "^9.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.36.0",
+    "@types/babel__generator": "^7.27.0",
+    "@types/babel__traverse": "^7.28.0",
+    "@types/fs-extra": "^11.0.4",
+    "bun-types": "^1.2.20",
+    "eslint": "^9.36.0",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^16.4.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.44.0"
+  }
+}
