@@ -239,6 +239,55 @@ bun run globalyze run --config ./globalyze.config.ts
 
 You have two practical ways to run Globalyze against a separate app.
 
+### Concrete example: `/Users/bilal/Documents/Calendaty`
+
+If your target app lives at:
+
+```text
+/Users/bilal/Documents/Calendaty
+```
+
+create this file:
+
+```text
+/Users/bilal/Documents/Calendaty/globalyze.config.ts
+```
+
+with:
+
+```ts
+export default {
+  sourceDir: "src",
+  localesDir: "locales",
+  languages: ["en", "ar", "fr", "de"],
+  ignore: ["node_modules", "dist", "build", ".next", ".git"],
+  sourceLocale: "en",
+  aiModel: "gpt-4o-mini",
+  aiBatchSize: 20,
+  translationImportPath: "@/i18n",
+  translationFunctionName: "t"
+};
+```
+
+Then run:
+
+```bash
+cd /Users/bilal/Documents/globalyze
+bun run ./src/index.ts scan --config /Users/bilal/Documents/Calendaty/globalyze.config.ts
+bun run ./src/index.ts transform --config /Users/bilal/Documents/Calendaty/globalyze.config.ts
+bun run ./src/index.ts run --config /Users/bilal/Documents/Calendaty/globalyze.config.ts
+bun run ./src/index.ts translate --check --config /Users/bilal/Documents/Calendaty/globalyze.config.ts
+```
+
+Recommended order for a real repo:
+
+1. run `scan`
+2. review the findings
+3. commit a clean baseline in Calendaty
+4. run `transform`
+5. review the diff
+6. run `run` if you want locale generation and translation too
+
 ### Option 1. Run Globalyze from this repository against another folder
 
 Assume your target app lives at:
