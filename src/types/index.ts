@@ -54,6 +54,7 @@ export interface KeyGenerationResult {
   keysByText: Map<string, string>;
   usedFallback: boolean;
   fallbackReason?: string;
+  reusedExistingKeys: number;
 }
 
 export interface FileTransformResult {
@@ -110,4 +111,55 @@ export interface TransformPipelineResult {
 export interface FullRunResult {
   transform: TransformPipelineResult;
   translation: TranslationResult;
+}
+
+export interface TransformPreparationResult {
+  files: string[];
+  rawStrings: ExtractedString[];
+  keyAssignments: KeyAssignment[];
+  keysByText: Map<string, string>;
+  usedFallbackKeys: boolean;
+  fallbackReason?: string;
+  reusedExistingKeys: number;
+}
+
+export interface PreviewFileDiff {
+  filePath: string;
+  relativePath: string;
+  before: string;
+  after: string;
+  diff: string;
+  replacements: number;
+}
+
+export interface PreviewResult {
+  files: PreviewFileDiff[];
+  rawStrings: ExtractedString[];
+  reusedExistingKeys: number;
+  usedFallbackKeys: boolean;
+  fallbackReason?: string;
+}
+
+export interface WatchUpdateResult {
+  changedFiles: string[];
+  newStrings: ExtractedString[];
+  updatedFiles: FileTransformResult[];
+  localeSync: LocaleSyncResult;
+  reusedExistingKeys: number;
+  usedFallbackKeys: boolean;
+  fallbackReason?: string;
+}
+
+export interface OcrScanResult {
+  detectedText: string[];
+  untranslatedText: string[];
+}
+
+export interface ProjectScoreSummary {
+  coverage: number;
+  hardcodedStrings: number;
+  missingTranslations: number;
+  unusedLocaleKeys: number;
+  healthyLocales: boolean;
+  grade: "A" | "B" | "C" | "D";
 }

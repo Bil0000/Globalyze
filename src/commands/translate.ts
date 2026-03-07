@@ -93,7 +93,8 @@ export async function executeTranslateCommand(
 
   if (result.usedMockTranslations) {
     logger.warn(
-      "LINGO_API_KEY is not set, so English source values were copied to target locales."
+      result.skippedReason ??
+        "English source values were copied to target locales."
     );
   }
 

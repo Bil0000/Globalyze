@@ -14,6 +14,9 @@ Globalyze automates the repetitive parts of app internationalization:
 6. generates locale files
 7. translates locales with Lingo.dev
 8. validates translation coverage in CI
+9. previews and scores i18n changes before writing them
+10. watches source trees for new hardcoded UI strings
+11. scans screenshots for UI text missing from locales
 
 ## Before and after
 
@@ -172,6 +175,30 @@ That means this works immediately from the repo root:
 bun run globalyze run
 ```
 
+Preview changes without modifying files:
+
+```bash
+bun run globalyze preview
+```
+
+Watch for new strings during development:
+
+```bash
+bun run globalyze watch
+```
+
+Analyze a screenshot for UI text missing from locales:
+
+```bash
+bun run globalyze screenshot ./captures/checkout.png
+```
+
+Score the repository’s current i18n health:
+
+```bash
+bun run globalyze score
+```
+
 ## Local development commands
 
 Install dependencies:
@@ -197,6 +224,77 @@ Run TypeScript validation:
 ```bash
 ./node_modules/.bin/tsc --noEmit
 ```
+
+## Interactive CLI
+
+Running `globalyze` without a command opens an interactive menu so you can launch the main workflows without remembering subcommands.
+
+Available actions include:
+
+- scan project for strings
+- preview transformations
+- transform source code
+- generate translations
+- watch for new strings
+- analyze a screenshot
+- show translation report
+- show project score
+- run the full pipeline
+
+## Preview mode
+
+Preview source transformations without writing files:
+
+```bash
+globalyze preview
+```
+
+This runs the existing transform pipeline in memory and prints:
+
+- the original source snippet
+- the transformed source snippet
+- a unified diff for each changed file
+
+## Watch mode
+
+Watch the configured source directory for new hardcoded UI strings:
+
+```bash
+globalyze watch
+```
+
+When changes are detected, Globalyze:
+
+1. rescans the project
+2. detects newly introduced UI strings
+3. reuses existing keys for similar copy changes when possible
+4. transforms affected files
+5. syncs locale files
+
+## Screenshot detection
+
+Analyze a screenshot and compare OCR text against your locale files:
+
+```bash
+globalyze screenshot ./captures/checkout.png
+```
+
+This helps catch UI text that appears in the app but is missing from your localization dictionaries.
+
+## Repository score
+
+Generate a high-level internationalization score for the current project:
+
+```bash
+globalyze score
+```
+
+The score combines:
+
+- translation coverage
+- remaining hardcoded UI strings
+- locale completeness
+- unused locale keys
 
 ## How to test the CLI in this repository
 

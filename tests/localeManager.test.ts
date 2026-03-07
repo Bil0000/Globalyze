@@ -7,12 +7,15 @@ import {
   buildSourceLocale,
   ensureLocaleCoverageReady,
   findMissingTranslationKeys,
+  mergeSourceLocaleDictionary,
   readLocaleDictionary,
   syncLocaleFiles,
   writeLocaleDictionary
 } from "../src/i18n/localeManager";
+import { prepareTransformProject } from "../src/cli/pipeline";
 import { createTestConfig } from "./testUtils";
 import { GlobalyzeError } from "../src/utils/errors";
+import { mkdir, writeFile } from "node:fs/promises";
 
 describe("localeManager", () => {
   const tempDirectories: string[] = [];
@@ -102,5 +105,60 @@ describe("localeManager", () => {
     expect(await readLocaleDictionary(updatedConfig, "es")).toEqual({
       "checkout.buy_button": ""
     });
+  });
+
+  it("merges incremental source locale updates without dropping existing keys", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locales-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir);
+
+    await syncLocaleFiles(
+      config,
+      buildSourceLocale([
+        {
+          key: "checkout.buy_button",
+          text: "Buy now",
+          file: "src/app/page.tsx"
+        }
+      ])
+    );
+
+    const merged = await mergeSourceLocaleDictionary(config, {
+      "support.contact_button": "Contact support"
+    });
+
+    expect(merged).toEqual({
+      "checkout.buy_button": "Buy now",
+      "support.contact_button": "Contact support"
+    });
+  });
+
+  it("fails clearly when the project is already transformed but the source locale is empty", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locales-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir);
+    const filePath = path.join(rootDir, "src", "app", "page.tsx");
+
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(
+      filePath,
+      [
+        'import { t } from "@/i18n";',
+        "export default function Page() {",
+        '  return <button>{t("checkout.buy_button")}</button>;',
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    await syncLocaleFiles(config, {});
+
+    expect(prepareTransformProject(config)).rejects.toThrow(
+      new GlobalyzeError(
+        `The project appears to be already transformed, but en.json is empty in ${config.localesDir}. Globalyze cannot rebuild source strings from translation keys alone. Restore the source locale file from git, or rerun Globalyze on an untransformed source tree.`
+      )
+    );
   });
 });

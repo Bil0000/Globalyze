@@ -2,7 +2,9 @@ import path from "node:path";
 
 import { createKeyAssignments, generateSemanticKeys } from "../ai/keyGenerator";
 import { extractStringsFromFiles } from "../extractor/stringExtractor";
+import { extractTranslationKeysFromFiles } from "../extractor/translationKeyExtractor";
 import {
+  readLocaleDictionary,
   findMissingTranslationKeys,
   syncLocaleFiles,
   buildSourceLocale
@@ -15,10 +17,12 @@ import type {
   MissingTranslationReport,
   ResolvedGlobalyzeConfig,
   ScanResult,
+  TransformPreparationResult,
   TransformPipelineResult,
   TranslationResult
 } from "../types";
 import { toRelativePosixPath } from "../utils/fileUtils";
+import { GlobalyzeError } from "../utils/errors";
 
 export async function collectProjectStrings(
   config: ResolvedGlobalyzeConfig
@@ -49,39 +53,82 @@ export async function collectProjectStrings(
   };
 }
 
-export async function transformProject(
+export async function prepareTransformProject(
   config: ResolvedGlobalyzeConfig
-): Promise<TransformPipelineResult> {
+): Promise<TransformPreparationResult> {
   const files = await scanProjectFiles(config);
   const rawStrings = await extractStringsFromFiles(files);
   const keySourceStrings = rawStrings.map((item) => ({
     ...item,
     file: toRelativePosixPath(config.sourceDir, item.file)
   }));
+  const existingSourceLocale = await readLocaleDictionary(
+    config,
+    config.sourceLocale
+  );
+  const existingTranslationKeys =
+    rawStrings.length === 0
+      ? await extractTranslationKeysFromFiles(
+          files,
+          config.translationFunctionName
+        )
+      : [];
+
+  if (
+    rawStrings.length === 0 &&
+    existingTranslationKeys.length > 0 &&
+    Object.keys(existingSourceLocale).length === 0
+  ) {
+    throw new GlobalyzeError(
+      `The project appears to be already transformed, but ${config.sourceLocale}.json is empty in ${config.localesDir}. Globalyze cannot rebuild source strings from translation keys alone. Restore the source locale file from git, or rerun Globalyze on an untransformed source tree.`
+    );
+  }
+
   const keyResult = await generateSemanticKeys(keySourceStrings, {
     model: config.aiModel,
-    batchSize: config.aiBatchSize
+    batchSize: config.aiBatchSize,
+    existingLocale: existingSourceLocale
   });
   const keyAssignments = createKeyAssignments(
     keySourceStrings,
     keyResult.keysByText
   );
-  const transformedFiles = await transformFiles(files, keyResult.keysByText, config);
+
+  return {
+    files,
+    rawStrings,
+    keyAssignments,
+    keysByText: keyResult.keysByText,
+    usedFallbackKeys: keyResult.usedFallback,
+    fallbackReason: keyResult.fallbackReason,
+    reusedExistingKeys: keyResult.reusedExistingKeys
+  };
+}
+
+export async function transformProject(
+  config: ResolvedGlobalyzeConfig
+): Promise<TransformPipelineResult> {
+  const prepared = await prepareTransformProject(config);
+  const transformedFiles = await transformFiles(
+    prepared.files,
+    prepared.keysByText,
+    config
+  );
   const localeSync = await syncLocaleFiles(
     config,
-    buildSourceLocale(keyAssignments)
+    buildSourceLocale(prepared.keyAssignments)
   );
 
   return {
-    files: files.map((filePath) => path.relative(config.rootDir, filePath)),
-    strings: rawStrings.map((item) => ({
+    files: prepared.files.map((filePath) => path.relative(config.rootDir, filePath)),
+    strings: prepared.rawStrings.map((item) => ({
       ...item,
       file: toRelativePosixPath(config.rootDir, item.file)
     })),
-    keyAssignments,
+    keyAssignments: prepared.keyAssignments,
     transformedFiles,
     localeSync,
-    usedFallbackKeys: keyResult.usedFallback
+    usedFallbackKeys: prepared.usedFallbackKeys
   };
 }
 

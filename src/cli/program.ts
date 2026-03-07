@@ -1,11 +1,15 @@
 import { Command } from "commander";
 
 import { registerInitCommand } from "../commands/init";
+import { registerPreviewCommand } from "../commands/preview";
 import { registerReportCommand } from "../commands/report";
 import { registerRunCommand } from "../commands/run";
 import { registerScanCommand } from "../commands/scan";
+import { registerScoreCommand } from "../commands/score";
+import { registerScreenshotCommand } from "../commands/screenshot";
 import { registerTransformCommand } from "../commands/transform";
 import { registerTranslateCommand } from "../commands/translate";
+import { registerWatchCommand } from "../commands/watch";
 
 export function buildProgram(version: string): Command {
   const program = new Command();
@@ -18,10 +22,14 @@ export function buildProgram(version: string): Command {
     .version(version);
 
   registerInitCommand(program);
+  registerPreviewCommand(program);
   registerScanCommand(program);
+  registerWatchCommand(program);
+  registerScreenshotCommand(program);
   registerTransformCommand(program);
   registerTranslateCommand(program);
   registerReportCommand(program);
+  registerScoreCommand(program);
   registerRunCommand(program);
 
   return program;

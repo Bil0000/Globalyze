@@ -4,8 +4,10 @@ import type {
   ExtractedString,
   KeyAssignment,
   KeyGenerationCandidate,
-  KeyGenerationResult
+  KeyGenerationResult,
+  LocaleDictionary
 } from "../types";
+import { findSimilarExistingKey } from "./keySimilarity";
 import { toPosixPath } from "../utils/fileUtils";
 
 const GENERIC_FILE_SEGMENTS = new Set([
@@ -231,15 +233,20 @@ export async function generateSemanticKeys(
     apiKey?: string;
     model?: string;
     batchSize?: number;
+    existingLocale?: LocaleDictionary;
   } = {}
 ): Promise<KeyGenerationResult> {
   const candidates = dedupeCandidates(strings);
   const keysByText = new Map<string, string>();
+  const existingLocale = options.existingLocale ?? {};
+  const reservedKeys = new Set<string>();
   const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
   const model = options.model ?? "gpt-4o-mini";
   const batchSize = options.batchSize ?? 20;
   let usedFallback = false;
   let fallbackReason: string | undefined;
+  let reusedExistingKeys = 0;
+  const pendingCandidates: KeyGenerationCandidate[] = [];
 
   const assignCandidate = (
     candidate: KeyGenerationCandidate,
@@ -251,28 +258,58 @@ export async function generateSemanticKeys(
     }
     const uniqueKey = makeUniqueKey(baseKey, candidate.text, keysByText);
     keysByText.set(candidate.text, uniqueKey);
+    reservedKeys.add(uniqueKey);
   };
+
+  for (const candidate of candidates) {
+    const exactMatch = Object.entries(existingLocale).find(
+      ([key, value]) => value === candidate.text && !reservedKeys.has(key)
+    );
+
+    if (exactMatch) {
+      keysByText.set(candidate.text, exactMatch[0]);
+      reservedKeys.add(exactMatch[0]);
+      reusedExistingKeys += 1;
+      continue;
+    }
+
+    const similarMatch = findSimilarExistingKey(
+      candidate.text,
+      existingLocale,
+      reservedKeys
+    );
+
+    if (similarMatch) {
+      keysByText.set(candidate.text, similarMatch.key);
+      reservedKeys.add(similarMatch.key);
+      reusedExistingKeys += 1;
+      continue;
+    }
+
+    pendingCandidates.push(candidate);
+  }
 
   if (!apiKey) {
     usedFallback = true;
     fallbackReason =
       "OPENAI_API_KEY is not set, so deterministic fallback keys were used.";
 
-    for (const candidate of candidates) {
+    for (const candidate of pendingCandidates) {
       assignCandidate(candidate, null);
     }
 
     return {
       keysByText,
       usedFallback,
-      fallbackReason
+      fallbackReason,
+      reusedExistingKeys
     };
   }
 
   const client = new OpenAI({ apiKey });
 
-  for (let index = 0; index < candidates.length; index += batchSize) {
-    const batch = candidates.slice(index, index + batchSize);
+  for (let index = 0; index < pendingCandidates.length; index += batchSize) {
+    const batch = pendingCandidates.slice(index, index + batchSize);
 
     try {
       const generated = await generateBatchWithOpenAI(client, model, batch);
@@ -301,6 +338,7 @@ export async function generateSemanticKeys(
   return {
     keysByText,
     usedFallback,
+    reusedExistingKeys,
     ...(fallbackReason ? { fallbackReason } : {})
   };
 }

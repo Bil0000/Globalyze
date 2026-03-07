@@ -1,12 +1,16 @@
-import { t } from "@/i18n";
 export function MarketingHero() {
-  return <section>
-      <p>{t("marketinghero.ship_once_launch_everywhere")}</p>
-      <h1>{t("marketinghero.global_releases_without_the_localization")}</h1>
-      <p>{t("marketinghero.detect_hardcoded_strings_refactor_jsx_au")}</p>
+  return (
+    <section>
+      <p>Ship once, launch everywhere</p>
+      <h1>Global releases without the localization tax</h1>
+      <p>
+        Detect hardcoded strings, refactor JSX automatically, and keep
+        translations flowing.
+      </p>
       <div>
-        <button>{t("marketinghero.book_a_demo")}</button>
-        <button>{t("marketinghero.view_cli_workflow")}</button>
+        <button>Book a demo</button>
+        <button>View CLI workflow</button>
       </div>
-    </section>;
+    </section>
+  );
 }

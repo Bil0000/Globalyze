@@ -27,9 +27,32 @@ describe("generateSemanticKeys", () => {
     });
 
     expect(result.usedFallback).toBe(true);
+    expect(result.reusedExistingKeys).toBe(0);
     expect(result.keysByText.get("Buy now")).toBe("checkout.buy_now");
     expect(result.keysByText.get("Welcome to our store")).toBe(
       "hero.welcome_to_our_store"
     );
+  });
+
+  it("reuses an existing key for a similar source string", async () => {
+    const strings: ExtractedString[] = [
+      {
+        text: "Start free trial",
+        file: "/tmp/demo/src/components/Pricing.tsx",
+        line: 7,
+        column: 3,
+        kind: "jsx-text"
+      }
+    ];
+
+    const result = await generateSemanticKeys(strings, {
+      apiKey: undefined,
+      existingLocale: {
+        "pricing.start_trial": "Start trial"
+      }
+    });
+
+    expect(result.keysByText.get("Start free trial")).toBe("pricing.start_trial");
+    expect(result.reusedExistingKeys).toBe(1);
   });
 });

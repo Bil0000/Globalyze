@@ -64,14 +64,19 @@ export async function translateLocales(
 
     return {
       translatedLocales: targetLanguages,
-      usedMockTranslations: true
+      usedMockTranslations: true,
+      skippedReason:
+        "LINGO_API_KEY is not set, so English source values were copied to target locales."
     };
   }
+
+  process.env.DO_NOT_TRACK ??= "1";
 
   const engine = new LingoDotDevEngine({
     apiKey,
     ...(config.lingoApiUrl ? { baseUrl: config.lingoApiUrl } : {})
   });
+  const fallbackWarnings: string[] = [];
 
   for (const language of targetLanguages) {
     try {
@@ -88,15 +93,18 @@ export async function translateLocales(
     } catch (error) {
       const reason =
         error instanceof Error ? error.message : "Unknown translation failure";
-
-      throw new GlobalyzeError(
-        `Lingo.dev translation failed for ${language}: ${reason}`
+      fallbackWarnings.push(
+        `Lingo.dev translation failed for ${language}: ${reason}. English source values were copied instead.`
       );
+      await writeLocaleDictionary(config, language, sourceLocale);
     }
   }
 
   return {
     translatedLocales: targetLanguages,
-    usedMockTranslations: false
+    usedMockTranslations: fallbackWarnings.length > 0,
+    ...(fallbackWarnings.length > 0
+      ? { skippedReason: fallbackWarnings.join(" ") }
+      : {})
   };
 }

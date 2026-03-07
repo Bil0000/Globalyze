@@ -112,6 +112,21 @@ export async function writeLocaleDictionary(
   await writeJsonFile(getLocaleFilePath(config, language), locale);
 }
 
+export async function mergeSourceLocaleDictionary(
+  config: ResolvedGlobalyzeConfig,
+  nextSourceLocale: LocaleDictionary
+): Promise<LocaleDictionary> {
+  const currentSourceLocale = await readLocaleDictionary(
+    config,
+    config.sourceLocale
+  );
+
+  return {
+    ...currentSourceLocale,
+    ...nextSourceLocale
+  };
+}
+
 export async function ensureLocaleCoverageReady(
   config: ResolvedGlobalyzeConfig
 ): Promise<void> {

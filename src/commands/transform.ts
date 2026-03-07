@@ -1,13 +1,16 @@
 import { Command } from "commander";
 
-import { createKeyAssignments, generateSemanticKeys } from "../ai/keyGenerator";
-import { extractStringsFromFiles } from "../extractor/stringExtractor";
+import { prepareTransformProject } from "../cli/pipeline";
 import { buildSourceLocale, syncLocaleFiles } from "../i18n/localeManager";
-import { scanProjectFiles } from "../scanner/projectScanner";
 import { transformFiles } from "../transformer/astTransformer";
-import type { ExtractedString, GlobalyzeConfig } from "../types";
-import { loadGlobalyzeConfig, toRelativePosixPath } from "../utils/fileUtils";
+import type { GlobalyzeConfig } from "../types";
+import { loadGlobalyzeConfig } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
+import {
+  logFallbackReason,
+  logInterruptHint,
+  logReusedKeyCount
+} from "../utils/progress";
 
 function buildOverrides(options: {
   sourceDir?: string;
@@ -49,52 +52,26 @@ export async function executeTransformCommand(
     () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
     "Loaded configuration"
   );
-  logger.hint("Press Ctrl+C at any time to stop Globalyze safely.");
-  const files = await logger.step(
-    "Scanning source files",
-    () => scanProjectFiles(config),
-    (discoveredFiles) =>
-      `Discovered ${String(discoveredFiles.length)} source files`
-  );
-  const rawStrings = await logger.step(
-    "Extracting hardcoded UI strings",
-    () => extractStringsFromFiles(files),
-    (strings) => `Extracted ${String(strings.length)} UI strings`
-  );
-  const keySourceStrings: ExtractedString[] = rawStrings.map((item) => ({
-    ...item,
-    file: toRelativePosixPath(config.sourceDir, item.file)
-  }));
-  const keyResult = await logger.step(
-    "Generating translation keys",
-    () =>
-      generateSemanticKeys(keySourceStrings, {
-        model: config.aiModel,
-        batchSize: config.aiBatchSize
-      }),
+  logInterruptHint();
+  const prepared = await logger.step(
+    "Preparing transformation plan",
+    () => prepareTransformProject(config),
     (result) =>
-      `Generated ${String(result.keysByText.size)} translation keys${
-        result.usedFallback ? " using fallback mode" : ""
-      }`
+      `Prepared ${String(result.keyAssignments.length)} translation keys from ${String(result.rawStrings.length)} UI strings`
   );
 
-  if (keyResult.fallbackReason) {
-    logger.warn(keyResult.fallbackReason);
-  }
+  logFallbackReason(prepared.fallbackReason);
+  logReusedKeyCount(prepared.reusedExistingKeys);
 
   const transformedFiles = await logger.step(
     "Transforming source files",
-    () => transformFiles(files, keyResult.keysByText, config),
+    () => transformFiles(prepared.files, prepared.keysByText, config),
     (results) =>
       `Transformed ${String(results.filter((item) => item.updated).length)} files`
   );
-  const keyAssignments = createKeyAssignments(
-    keySourceStrings,
-    keyResult.keysByText
-  );
   const localeSync = await logger.step(
     "Syncing locale files",
-    () => syncLocaleFiles(config, buildSourceLocale(keyAssignments)),
+    () => syncLocaleFiles(config, buildSourceLocale(prepared.keyAssignments)),
     () => `Updated locale files in ${config.localesDir}`
   );
   const updatedFiles = transformedFiles.filter((item) => item.updated);
@@ -116,11 +93,11 @@ export async function executeTransformCommand(
 
   return {
     config,
-    files,
-    rawStrings,
-    keyAssignments,
+    files: prepared.files,
+    rawStrings: prepared.rawStrings,
+    keyAssignments: prepared.keyAssignments,
     transformedFiles,
     localeSync,
-    usedFallbackKeys: keyResult.usedFallback
+    usedFallbackKeys: prepared.usedFallbackKeys
   };
 }

@@ -3,7 +3,10 @@ import generate from "@babel/generator";
 import traverse from "@babel/traverse";
 import * as t from "@babel/types";
 
-import type { FileTransformResult, ResolvedGlobalyzeConfig } from "../types";
+import type {
+  FileTransformResult,
+  ResolvedGlobalyzeConfig
+} from "../types";
 import {
   isTranslatableAttributeName,
   normalizeUiText
@@ -68,6 +71,27 @@ export async function transformFile(
   config: ResolvedGlobalyzeConfig
 ): Promise<FileTransformResult> {
   const source = await readTextFile(filePath);
+  const transformed = transformSource(filePath, source, keysByText, config);
+
+  if (!transformed.updated) {
+    return transformed.result;
+  }
+
+  await writeTextFile(filePath, `${transformed.code}\n`);
+
+  return transformed.result;
+}
+
+export function transformSource(
+  filePath: string,
+  source: string,
+  keysByText: ReadonlyMap<string, string>,
+  config: ResolvedGlobalyzeConfig
+): {
+  result: FileTransformResult;
+  updated: boolean;
+  code: string;
+} {
   const ast = parseModule(source, filePath);
   const state = {
     transformed: false,
@@ -209,9 +233,13 @@ export async function transformFile(
 
   if (!state.transformed) {
     return {
-      filePath,
       updated: false,
-      replacements: 0
+      code: source,
+      result: {
+        filePath,
+        updated: false,
+        replacements: 0
+      }
     };
   }
 
@@ -258,12 +286,14 @@ export async function transformFile(
     }
   }).code;
 
-  await writeTextFile(filePath, `${output}\n`);
-
   return {
-    filePath,
     updated: true,
-    replacements: state.replacements
+    code: output,
+    result: {
+      filePath,
+      updated: true,
+      replacements: state.replacements
+    }
   };
 }
 
