@@ -3,11 +3,6 @@ name: Globalyze
 on:
   pull_request:
   workflow_dispatch:
-    inputs:
-      auto_fix:
-        description: Automatically run Globalyze and commit locale updates
-        required: false
-        default: "false"
 
 permissions:
   contents: write
@@ -27,22 +22,29 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Auto-fix translations
-        if: ${{ (github.event_name == 'pull_request' && vars.GLOBALYZE_AUTO_FIX == 'true') || (github.event_name == 'workflow_dispatch' && inputs.auto_fix == 'true') }}
+      - name: Auto-fix project
         run: bun run globalyze run
 
-      - name: Commit locale updates
-        if: ${{ (github.event_name == 'pull_request' && vars.GLOBALYZE_AUTO_FIX == 'true') || (github.event_name == 'workflow_dispatch' && inputs.auto_fix == 'true') }}
+      - name: Commit Globalyze updates
         run: |
           git config user.name "globalyze bot"
           git config user.email "actions@users.noreply.github.com"
-          git add -A examples/demo-nextjs/locales
-          git commit -m "globalyze bot: add missing translations" || echo "No locale changes to commit"
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m "globalyze bot: add missing translations"
+
+      - name: Push Globalyze updates
+        if: ${{ github.event_name == 'pull_request' && !github.event.pull_request.head.repo.fork }}
+        run: git push origin "HEAD:${{ github.head_ref }}"
 
       - name: Scan for hardcoded UI strings
-        if: ${{ !((github.event_name == 'pull_request' && vars.GLOBALYZE_AUTO_FIX == 'true') || (github.event_name == 'workflow_dispatch' && inputs.auto_fix == 'true')) }}
         run: bun run globalyze scan --fail-on-findings
 
       - name: Check locale coverage
-        if: ${{ !((github.event_name == 'pull_request' && vars.GLOBALYZE_AUTO_FIX == 'true') || (github.event_name == 'workflow_dispatch' && inputs.auto_fix == 'true')) }}
         run: bun run globalyze translate --check
+
+      - name: Note fork limitation
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}
+        run: |
+          echo "Globalyze auto-fix generated changes, but this workflow cannot push to forked pull requests."
+          echo "Re-run Globalyze locally or from a branch in the main repository to apply fixes automatically."

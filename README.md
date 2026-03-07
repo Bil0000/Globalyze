@@ -591,21 +591,44 @@ Core modules:
 
 The repository ships with [globalyze.yml](/Users/bilal/Documents/globalyze/.github/workflows/globalyze.yml).
 
-It runs on pull requests and supports two modes:
+It runs on pull requests and uses always-on auto-fix behavior.
 
-- enforcement mode: fails when hardcoded strings or missing translations are detected
-- auto-fix mode: runs the full pipeline and commits updated locale files
+Workflow behavior:
 
-Auto-fix can be enabled by:
+1. install dependencies
+2. run `globalyze run`
+3. commit any generated changes
+4. push those changes back to the PR branch when permissions allow it
+5. run enforcement checks afterward:
+   - `globalyze scan --fail-on-findings`
+   - `globalyze translate --check`
 
-- setting repository variable `GLOBALYZE_AUTO_FIX=true`, or
-- running the workflow manually with `auto_fix=true`
+This means the workflow tries to fix the branch automatically first, then fails only if problems still remain after the auto-fix pass.
 
 The auto-fix commit message is:
 
 ```text
 globalyze bot: add missing translations
 ```
+
+If the pull request comes from a fork, GitHub may block the workflow from pushing changes back to the branch. In that case the workflow still runs and reports the limitation, but the contributor must apply the fixes locally.
+
+How to test the workflow locally:
+
+```bash
+bun run ./src/index.ts run
+bun run ./src/index.ts scan --fail-on-findings
+bun run ./src/index.ts translate --check
+```
+
+How to test it in GitHub:
+
+1. push a branch
+2. open a pull request
+3. go to the Actions tab
+4. inspect the `Globalyze` workflow run
+
+If Globalyze can auto-fix the branch, it will commit and push the updates. If it cannot fully resolve the issues, the final enforcement steps will fail and show what still needs attention.
 
 ## Troubleshooting
 
