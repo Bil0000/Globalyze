@@ -4,9 +4,16 @@
   "description": "A Bun-powered CLI that internationalizes React and Next.js applications automatically.",
   "license": "MIT",
   "type": "module",
+  "packageManager": "bun@1.2.20",
   "bin": {
-    "globalyze": "./src/index.ts"
+    "globalyze": "./bin/globalyze"
   },
+  "files": [
+    "bin",
+    "src",
+    "README.md",
+    "package.json"
+  ],
   "scripts": {
     "globalyze": "bun run ./src/index.ts",
     "build": "bun build ./src/index.ts --outdir dist --target bun",

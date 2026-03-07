@@ -54,6 +54,64 @@ cd globalyze
 bun install
 ```
 
+## Global CLI usage
+
+Globalyze can be used as a repo-local CLI or as a globally available system command.
+
+Best workflows:
+
+- maintainer workflow: use a global link from your local checkout while iterating quickly
+- user workflow: install directly from GitHub, then run `globalyze` inside any target app
+
+### Maintainer workflow: link your local checkout globally
+
+From the Globalyze repository root:
+
+```bash
+bun link
+```
+
+After that, from another project:
+
+```bash
+cd /Users/bilal/Documents/Calendaty
+globalyze init
+globalyze scan
+globalyze run
+```
+
+This is the best option while the CLI is changing frequently, because edits in your local Globalyze checkout are immediately testable from other repositories.
+
+### User workflow: install directly from GitHub
+
+Users can install Globalyze globally from GitHub with Bun.
+
+Example:
+
+```bash
+bun add -g github:<owner>/<repo>
+```
+
+For a concrete repository, that becomes:
+
+```bash
+bun add -g github:your-org/globalyze
+```
+
+After installation, users can run:
+
+```bash
+globalyze init
+globalyze scan
+globalyze run
+```
+
+from inside the target project directory.
+
+### What `globalyze init` does in another repo
+
+When run inside another project, `globalyze init` creates `globalyze.config.ts` in the current working directory. After that, `scan`, `transform`, `translate`, and `run` use that local config automatically.
+
 ## Environment variables
 
 For local testing, exporting variables in your terminal is enough:
