@@ -1,12 +1,27 @@
-import { describe, expect, it } from "bun:test";
+import path from "node:path";
+import { afterEach, describe, expect, it } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 import {
+  buildFileLocalizationMetadata,
   resolveComponentName,
   resolveNameMetadata,
   resolvePageName
 } from "../src/utils/nameResolver";
 
 describe("nameResolver", () => {
+  const tempDirectories: string[] = [];
+
+  afterEach(async () => {
+    await Promise.all(
+      tempDirectories.map((directory) =>
+        rm(directory, { recursive: true, force: true })
+      )
+    );
+    tempDirectories.length = 0;
+  });
+
   it("detects Next.js and TanStack page names", () => {
     expect(resolvePageName("/tmp/app/src/pages/payments/index.tsx")).toBe("payments");
     expect(resolvePageName("/tmp/app/src/app/checkout/page.tsx")).toBe("checkout");
@@ -34,5 +49,68 @@ describe("nameResolver", () => {
       type: "page",
       name: "dashboard"
     });
+  });
+
+  it("resolves page ownership through alias imports and tracks shared components", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-name-resolver-"));
+    tempDirectories.push(rootDir);
+
+    await mkdir(path.join(rootDir, "src", "app", "checkout"), {
+      recursive: true
+    });
+    await mkdir(path.join(rootDir, "src", "app", "pricing"), {
+      recursive: true
+    });
+    await mkdir(path.join(rootDir, "src", "components"), {
+      recursive: true
+    });
+
+    const homePage = path.join(rootDir, "src", "app", "page.tsx");
+    const checkoutPage = path.join(rootDir, "src", "app", "checkout", "page.tsx");
+    const pricingPage = path.join(rootDir, "src", "app", "pricing", "page.tsx");
+    const heroComponent = path.join(rootDir, "src", "components", "MarketingHero.tsx");
+    const sharedComponent = path.join(rootDir, "src", "components", "SharedBanner.tsx");
+
+    await writeFile(
+      homePage,
+      'import { MarketingHero } from "@/components/MarketingHero"; export default function Page() { return <MarketingHero />; }\n',
+      "utf8"
+    );
+    await writeFile(
+      checkoutPage,
+      'import { SharedBanner } from "@/components/SharedBanner"; export default function CheckoutPage() { return <SharedBanner />; }\n',
+      "utf8"
+    );
+    await writeFile(
+      pricingPage,
+      'import { SharedBanner } from "@/components/SharedBanner"; export default function PricingPage() { return <SharedBanner />; }\n',
+      "utf8"
+    );
+    await writeFile(
+      heroComponent,
+      "export function MarketingHero() { return null; }\n",
+      "utf8"
+    );
+    await writeFile(
+      sharedComponent,
+      "export function SharedBanner() { return null; }\n",
+      "utf8"
+    );
+
+    const metadata = await buildFileLocalizationMetadata([
+      homePage,
+      checkoutPage,
+      pricingPage,
+      heroComponent,
+      sharedComponent
+    ]);
+
+    expect(metadata.get(heroComponent)?.pageName).toBe("home");
+    expect(metadata.get(heroComponent)?.pageNames).toEqual(["home"]);
+    expect(metadata.get(sharedComponent)?.pageName).toBeUndefined();
+    expect(metadata.get(sharedComponent)?.pageNames).toEqual([
+      "checkout",
+      "pricing"
+    ]);
   });
 });

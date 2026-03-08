@@ -99,8 +99,16 @@ function buildLocalizedFileName(
 
 function buildAssignmentMap(
   assignments?: readonly LocaleKeyReference[]
-): Map<string, LocaleKeyReference> {
-  return new Map((assignments ?? []).map((assignment) => [assignment.key, assignment]));
+): Map<string, LocaleKeyReference[]> {
+  const map = new Map<string, LocaleKeyReference[]>();
+
+  for (const assignment of assignments ?? []) {
+    const bucketAssignments = map.get(assignment.key) ?? [];
+    bucketAssignments.push(assignment);
+    map.set(assignment.key, bucketAssignments);
+  }
+
+  return map;
 }
 
 function resolveBucketFromFile(
@@ -144,13 +152,47 @@ function buildInitialBuckets(
   for (const key of Object.keys(sourceLocale).sort((left, right) =>
     left.localeCompare(right)
   )) {
-    const assignment = assignmentMap.get(key);
-    const bucket = assignment
-      ? resolveBucketFromFile(assignment.file, splitStrategy)
-      : resolveBucketFromKey(key);
-    const keys = buckets.get(bucket) ?? [];
+    const keyAssignments = assignmentMap.get(key) ?? [];
+    const pageNames = [...new Set(
+      keyAssignments
+        .flatMap((assignment) =>
+          assignment.pageNames && assignment.pageNames.length > 0
+            ? assignment.pageNames
+            : assignment.pageName
+              ? [assignment.pageName]
+              : []
+        )
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+        .map((value) => slugifySegment(value))
+        .filter(Boolean)
+    )];
+    const componentNames = [...new Set(
+      keyAssignments
+        .map((assignment) => assignment.componentName)
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+        .map((value) => slugifySegment(value))
+        .filter(Boolean)
+    )];
+    const bucket =
+      splitStrategy === "page"
+        ? pageNames.length === 1
+          ? pageNames[0]
+          : pageNames.length > 1
+            ? "common"
+            : keyAssignments[0]
+              ? resolveBucketFromFile(keyAssignments[0].file, splitStrategy)
+              : resolveBucketFromKey(key)
+        : componentNames.length === 1
+          ? componentNames[0]
+          : componentNames.length > 1
+            ? "common"
+            : keyAssignments[0]
+              ? resolveBucketFromFile(keyAssignments[0].file, splitStrategy)
+              : resolveBucketFromKey(key);
+    const normalizedBucket = bucket ?? resolveBucketFromKey(key);
+    const keys = buckets.get(normalizedBucket) ?? [];
     keys.push(key);
-    buckets.set(bucket, keys);
+    buckets.set(normalizedBucket, keys);
   }
 
   return buckets;

@@ -130,7 +130,8 @@ export async function readLocaleEntries(
 export async function writeLocaleDictionary(
   config: ResolvedGlobalyzeConfig,
   language: string,
-  locale: LocaleDictionary
+  locale: LocaleDictionary,
+  sourceAssignments?: readonly LocaleKeyReference[]
 ): Promise<void> {
   const sourceLocale =
     language === config.sourceLocale
@@ -147,14 +148,16 @@ export async function writeLocaleDictionary(
     config,
     language,
     mergeMetadata(currentEntries, locale),
-    sourceEntries
+    sourceEntries,
+    sourceAssignments
   );
 }
 
 export async function writeLocaleEntries(
   config: ResolvedGlobalyzeConfig,
   language: string,
-  locale: LocaleEntryDictionary
+  locale: LocaleEntryDictionary,
+  sourceAssignments?: readonly LocaleKeyReference[]
 ): Promise<void> {
   const sourceEntries =
     language === config.sourceLocale
@@ -164,7 +167,8 @@ export async function writeLocaleEntries(
     config,
     language,
     locale,
-    sourceEntries
+    sourceEntries,
+    sourceAssignments
   );
 }
 

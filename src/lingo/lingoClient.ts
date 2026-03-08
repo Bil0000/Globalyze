@@ -15,6 +15,8 @@ import {
   readLocaleDictionary,
   writeLocaleDictionary
 } from "../i18n/localeManager";
+import { extractTranslationKeyReferencesFromFiles } from "../extractor/translationKeyExtractor";
+import { scanProjectFiles } from "../scanner/projectScanner";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -59,6 +61,14 @@ export async function translateLocales(
 ): Promise<TranslationResult> {
   await ensureLocaleCoverageReady(config);
   const sourceLocale = await readLocaleDictionary(config, config.sourceLocale);
+  const files = await scanProjectFiles(config);
+  const sourceAssignments =
+    files.length > 0
+      ? await extractTranslationKeyReferencesFromFiles(
+          files,
+          config.translationFunctionName
+        )
+      : [];
 
   const targetLanguages = config.languages.filter(
     (language) => language !== config.sourceLocale
@@ -76,7 +86,12 @@ export async function translateLocales(
 
   if (!apiKey) {
     for (const language of targetLanguages) {
-      await writeLocaleDictionary(config, language, sourceLocale);
+      await writeLocaleDictionary(
+        config,
+        language,
+        sourceLocale,
+        sourceAssignments
+      );
     }
 
     return {
@@ -134,7 +149,8 @@ export async function translateLocales(
       await writeLocaleDictionary(
         config,
         language,
-        coerceTranslatedLocale(mergedTranslatedLocale, sourceLocale)
+        coerceTranslatedLocale(mergedTranslatedLocale, sourceLocale),
+        sourceAssignments
       );
       if (config.cacheTranslations) {
         cacheWrites += await storeCachedTranslations(
@@ -149,7 +165,12 @@ export async function translateLocales(
       fallbackWarnings.push(
         `Lingo.dev translation failed for ${language}: ${reason}. English source values were copied instead.`
       );
-      await writeLocaleDictionary(config, language, sourceLocale);
+      await writeLocaleDictionary(
+        config,
+        language,
+        sourceLocale,
+        sourceAssignments
+      );
     }
   }
 

@@ -262,6 +262,7 @@ function dedupeCandidates(
       file: item.file,
       componentName: item.componentName,
       pageName: item.pageName,
+      pageNames: item.pageNames,
       elementType: item.elementType
     });
   }
@@ -559,7 +560,11 @@ export function createKeyAssignments(
     assignments.push({
       text: item.text,
       file: toPosixPath(item.file),
-      key: keysByText.get(item.text) ?? createFallbackKey(item)
+      key: keysByText.get(item.text) ?? createFallbackKey(item),
+      componentName: item.componentName,
+      pageName: item.pageName,
+      pageNames: item.pageNames,
+      elementType: item.elementType
     });
   }
 

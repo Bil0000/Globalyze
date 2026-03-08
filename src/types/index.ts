@@ -92,6 +92,7 @@ export interface ExtractedString {
   attributeName?: string;
   componentName?: string;
   pageName?: string;
+  pageNames?: string[];
   elementType?: string;
   interpolation?: Record<string, string>;
 }
@@ -101,6 +102,7 @@ export interface KeyGenerationCandidate {
   file: string;
   componentName?: string;
   pageName?: string;
+  pageNames?: string[];
   elementType?: string;
 }
 
@@ -111,6 +113,10 @@ export interface KeyAssignment extends KeyGenerationCandidate {
 export interface LocaleKeyReference {
   key: string;
   file: string;
+  pageName?: string;
+  pageNames?: string[];
+  componentName?: string;
+  sourceType?: "page" | "component";
 }
 
 export interface TranslationMetaEntry {
@@ -129,6 +135,7 @@ export interface DynamicExtractionCandidate {
   variables: Record<string, string>;
   componentName?: string;
   pageName?: string;
+  pageNames?: string[];
   elementType?: string;
 }
 
@@ -194,6 +201,7 @@ export interface TransformPipelineResult {
   files: string[];
   strings: ExtractedString[];
   keyAssignments: KeyAssignment[];
+  sourceAssignments: LocaleKeyReference[];
   transformedFiles: FileTransformResult[];
   localeSync: LocaleSyncResult;
   usedFallbackKeys: boolean;
@@ -208,6 +216,7 @@ export interface TransformPreparationResult {
   files: string[];
   rawStrings: ExtractedString[];
   keyAssignments: KeyAssignment[];
+  sourceAssignments: LocaleKeyReference[];
   keysByText: Map<string, string>;
   usedFallbackKeys: boolean;
   fallbackReason?: string;
@@ -261,12 +270,60 @@ export interface TranslationGraphEntry {
   originFile: string;
   localeFile: string;
   usages: string[];
+  pageName?: string;
+  pageNames?: string[];
+  componentName?: string;
+  sourceType?: "page" | "component";
   owner?: string;
   locked?: boolean;
   approvalRequired?: boolean;
 }
 
 export type TranslationGraph = Record<string, TranslationGraphEntry>;
+
+export interface LocaleInspectionFile {
+  fileName: string;
+  filePath: string;
+  entries: LocaleEntryDictionary;
+}
+
+export interface TranslationInspectionResult {
+  key: string;
+  value: string;
+  originFile?: string;
+  localeFile?: string;
+  usages: string[];
+  owner?: string;
+  locked?: boolean;
+  approvalRequired?: boolean;
+}
+
+export interface TranslationGraphSummary {
+  totalKeys: number;
+  totalPages: number;
+  totalComponents: number;
+  topPages: {
+    name: string;
+    count: number;
+  }[];
+  matchingKeys: string[];
+}
+
+export interface TranslationSearchMatch {
+  key: string;
+  value: string;
+}
+
+export interface LocalizationDoctorReport {
+  totalKeys: number;
+  unusedKeys: number;
+  duplicateStrings: number;
+  coverage: number;
+  lockedKeysModified: number;
+  approvalRequiredChanges: number;
+  localeStructureLabel: string;
+  languages: string[];
+}
 
 export interface DetectedLanguageResult {
   languages: string[];

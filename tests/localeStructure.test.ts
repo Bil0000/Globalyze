@@ -10,6 +10,8 @@ import {
   readLocaleDictionary,
   syncLocaleFiles
 } from "../src/i18n/localeManager";
+import { scanProjectFiles } from "../src/scanner/projectScanner";
+import { extractTranslationKeyReferencesFromFiles } from "../src/extractor/translationKeyExtractor";
 import type { LocaleStructureConfig } from "../src/types";
 import { createTestConfig } from "./testUtils";
 
@@ -238,6 +240,114 @@ describe("locale file structures", () => {
     );
 
     expect(pricingLocale).toContain('"pricing.title": "Pricing"');
+  });
+
+  it("groups component-owned keys into the parent page file when split by page", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locale-style-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      localeStructure: {
+        format: "js",
+        structure: "multiple",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "camel"
+      }
+    });
+
+    await mkdir(path.join(rootDir, "src", "app"), { recursive: true });
+    await mkdir(path.join(rootDir, "src", "components"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "src", "app", "page.tsx"),
+      [
+        'import { MarketingHero } from "@/components/MarketingHero";',
+        'import { PricingSection } from "@/components/PricingSection";',
+        "export default function HomePage() {",
+        "  return (",
+        "    <main>",
+        "      <MarketingHero />",
+        "      <PricingSection />",
+        "    </main>",
+        "  );",
+        "}",
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      path.join(rootDir, "src", "components", "MarketingHero.tsx"),
+      [
+        'import { t } from "@/i18n";',
+        "export function MarketingHero() {",
+        '  return <h1>{t("home.hero_title")}</h1>;',
+        "}",
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      path.join(rootDir, "src", "components", "PricingSection.tsx"),
+      [
+        'import { t } from "@/i18n";',
+        "export function PricingSection() {",
+        '  return <button>{t("home.page.button.start_rollout")}</button>;',
+        "}",
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+
+    const files = await scanProjectFiles(config);
+    const references = await extractTranslationKeyReferencesFromFiles(
+      files,
+      config.translationFunctionName
+    );
+
+    await syncLocaleFiles(
+      config,
+      {
+        "home.hero_title": "Grow faster",
+        "home.page.button.start_rollout": "Start rollout"
+      },
+      {
+        sourceAssignments: references
+      }
+    );
+
+    const homePageLocale = await readFile(
+      path.join(rootDir, "locales", "en", "homePage.js"),
+      "utf8"
+    );
+
+    expect(homePageLocale).toContain('"home.hero_title": "Grow faster"');
+    expect(homePageLocale).toContain(
+      '"home.page.button.start_rollout": "Start rollout"'
+    );
+    let marketingHeroExists = true;
+
+    try {
+      await readFile(
+        path.join(rootDir, "locales", "en", "marketingHeroPage.js"),
+        "utf8"
+      );
+    } catch {
+      marketingHeroExists = false;
+    }
+
+    let pricingSectionExists = true;
+
+    try {
+      await readFile(
+        path.join(rootDir, "locales", "en", "pricingSectionPage.js"),
+        "utf8"
+      );
+    } catch {
+      pricingSectionExists = false;
+    }
+
+    expect(marketingHeroExists).toBe(false);
+    expect(pricingSectionExists).toBe(false);
   });
 
   it("reorganizes existing locale files during change-style without regenerating keys", async () => {

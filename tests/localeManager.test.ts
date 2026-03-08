@@ -195,4 +195,96 @@ describe("localeManager", () => {
       )
     );
   });
+
+  it("preserves component assignments during sync for already transformed projects", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locales-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      localeStructure: {
+        format: "js",
+        structure: "multiple",
+        splitStrategy: "component",
+        commonFile: false,
+        naming: "dot"
+      }
+    });
+    const appFilePath = path.join(rootDir, "src", "app", "page.tsx");
+    const heroFilePath = path.join(rootDir, "src", "components", "MarketingHero.tsx");
+
+    await mkdir(path.dirname(appFilePath), { recursive: true });
+    await mkdir(path.dirname(heroFilePath), { recursive: true });
+    await writeFile(
+      appFilePath,
+      [
+        'import { MarketingHero } from "@/components/MarketingHero";',
+        'import { t } from "@/i18n";',
+        "export default function Page() {",
+        "  return (",
+        "    <main>",
+        '      <h1>{t("home.title")}</h1>',
+        "      <MarketingHero />",
+        "    </main>",
+        "  );",
+        "}",
+        ""
+      ].join("\n")
+    );
+    await writeFile(
+      heroFilePath,
+      [
+        'import { t } from "@/i18n";',
+        "export function MarketingHero() {",
+        '  return <section>{t("home.hero.button.book_demo")}</section>;',
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    await syncLocaleFiles(
+      config,
+      {
+        "home.title": "Global releases without the spreadsheet tax",
+        "home.hero.button.book_demo": "Book demo"
+      },
+      {
+        sourceAssignments: [
+          {
+            key: "home.title",
+            file: appFilePath,
+            pageName: "home",
+            pageNames: ["home"],
+            sourceType: "page"
+          },
+          {
+            key: "home.hero.button.book_demo",
+            file: heroFilePath,
+            pageName: "home",
+            pageNames: ["home"],
+            componentName: "marketingHero",
+            sourceType: "component"
+          }
+        ]
+      }
+    );
+
+    const prepared = await prepareTransformProject(config);
+    const heroAssignment = prepared.sourceAssignments.find(
+      (entry) => entry.key === "home.hero.button.book_demo"
+    );
+    const pageAssignment = prepared.sourceAssignments.find(
+      (entry) => entry.key === "home.title"
+    );
+
+    expect(prepared.rawStrings).toHaveLength(0);
+    expect(prepared.keyAssignments).toHaveLength(0);
+    expect(heroAssignment).toMatchObject({
+      key: "home.hero.button.book_demo",
+      componentName: "marketingHero"
+    });
+    expect(pageAssignment).toMatchObject({
+      key: "home.title",
+      pageName: "home"
+    });
+  });
 });

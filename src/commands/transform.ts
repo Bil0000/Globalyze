@@ -75,7 +75,7 @@ export async function executeTransformCommand(
     "Syncing locale files",
     () =>
       syncLocaleFiles(config, buildSourceLocale(prepared.keyAssignments), {
-        sourceAssignments: prepared.keyAssignments
+        sourceAssignments: prepared.sourceAssignments
       }),
     () => `Updated locale files in ${config.localesDir}`
   );
@@ -106,6 +106,7 @@ export async function executeTransformCommand(
     files: prepared.files,
     rawStrings: prepared.rawStrings,
     keyAssignments: prepared.keyAssignments,
+    sourceAssignments: prepared.sourceAssignments,
     transformedFiles,
     localeSync,
     usedFallbackKeys: prepared.usedFallbackKeys

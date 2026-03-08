@@ -261,6 +261,69 @@ Options:
 
 Finds unused locale keys. Use `--fix` to remove them from locale files.
 
+### Inspection Commands
+
+### `globalyze inspect <key>`
+
+Shows the value, locale file, source origin, usages, and governance metadata for a translation key.
+
+```bash
+globalyze inspect checkout.pay_button
+```
+
+### `globalyze graph`
+
+Shows a high-level summary of the translation graph, including total keys, page counts, component counts, and top pages.
+
+Examples:
+
+```bash
+globalyze graph
+globalyze graph --page checkout
+globalyze graph --component checkoutButton
+globalyze graph --visual
+```
+
+`--visual` renders a compact tree, for example:
+
+```text
+checkout.page
+├ checkout.title
+├ checkout.pay_button
+└ checkout.cancel
+```
+
+### `globalyze where <key>`
+
+Lists the source files that currently use a translation key.
+
+```bash
+globalyze where checkout.pay_button
+```
+
+### `globalyze locales <language> [scope]`
+
+Reads locale entries for a language without modifying files. Works with JSON, JS, single-file, and multi-file layouts.
+
+Examples:
+
+```bash
+globalyze locales en
+globalyze locales en checkout
+```
+
+### `globalyze search <text>`
+
+Finds translation keys by matching source-locale values.
+
+```bash
+globalyze search "Pay now"
+```
+
+### `globalyze doctor`
+
+Shows a read-only localization health report with key counts, unused keys, duplicate strings, coverage, locale structure, and configured languages.
+
 ### Maintenance Commands
 
 ### `globalyze init`
@@ -378,6 +441,28 @@ Options:
 - `-c, --config <path>`
 - `--source-dir <path>`
 - `--locales-dir <path>`
+
+## Inspecting Translations
+
+Globalyze includes read-only inspection commands for understanding the current localization state without rewriting code or locale files.
+
+```bash
+globalyze inspect checkout.pay_button
+globalyze graph
+globalyze where checkout.pay_button
+globalyze locales en
+globalyze locales en checkout
+globalyze search "Pay now"
+globalyze doctor
+```
+
+Use them to answer common questions quickly:
+
+- which file owns a key
+- where a key is used
+- which locale file contains a value
+- whether a string is duplicated
+- whether the current project has unused keys or missing coverage
 
 ### `globalyze translate`
 

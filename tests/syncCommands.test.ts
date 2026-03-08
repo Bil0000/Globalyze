@@ -156,6 +156,91 @@ describe("sync-related commands", () => {
     expect(scaffold).toContain("react-i18next");
   });
 
+  it("keeps per-page locale output aligned across all languages during globalize", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-globalize-page-"));
+    tempDirectories.push(rootDir);
+    process.chdir(rootDir);
+    await mkdir(path.join(rootDir, "src", "app"), { recursive: true });
+    await mkdir(path.join(rootDir, "src", "components"), { recursive: true });
+    await writeTextFile(
+      path.join(rootDir, "globalyze.config.ts"),
+      [
+        "export default {",
+        '  sourceDir: "src",',
+        '  localesDir: "locales",',
+        '  languages: ["en", "fr", "de", "ar"],',
+        '  ignore: ["node_modules", "dist", "build", ".next", ".git"],',
+        '  localeStructure: { format: "js", structure: "multiple", splitStrategy: "page", commonFile: true, naming: "camel" },',
+        "  cacheTranslations: true,",
+        "  dynamicExtraction: false,",
+        '  i18nAdapter: "generic",',
+        "  translationInstructions: [],",
+        '  sourceLocale: "en",',
+        '  openAiModel: "gpt-4o-mini",',
+        '  geminiModel: "gemini-2.5-flash-lite",',
+        "  aiBatchSize: 20,",
+        '  translationImportPath: "@/i18n",',
+        '  translationFunctionName: "t",',
+        "  governance: { enabled: false, failOnLockedChange: true, failOnApprovalRequiredChange: false }",
+        "};",
+        ""
+      ].join("\n")
+    );
+    await writeTextFile(
+      path.join(rootDir, "src", "app", "page.tsx"),
+      [
+        'import { MarketingHero } from "@/components/MarketingHero";',
+        'import { PricingSection } from "@/components/PricingSection";',
+        "",
+        "export default function HomePage() {",
+        "  return (",
+        "    <main>",
+        "      <MarketingHero />",
+        "      <PricingSection />",
+        "      <button>Start rollout</button>",
+        "    </main>",
+        "  );",
+        "}",
+        ""
+      ].join("\n")
+    );
+    await writeTextFile(
+      path.join(rootDir, "src", "components", "MarketingHero.tsx"),
+      [
+        "export function MarketingHero() {",
+        '  return <section><h1>Ship once</h1><button>Book demo</button></section>;',
+        "}",
+        ""
+      ].join("\n")
+    );
+    await writeTextFile(
+      path.join(rootDir, "src", "components", "PricingSection.tsx"),
+      [
+        "export function PricingSection() {",
+        '  return <section><h2>Plans</h2><button>Talk to sales</button></section>;',
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    await executeGlobalizeCommand();
+
+    const englishFiles = await readFile(
+      path.join(rootDir, "locales", "en", "homePage.js"),
+      "utf8"
+    );
+    const frenchFiles = await readFile(
+      path.join(rootDir, "locales", "fr", "homePage.js"),
+      "utf8"
+    );
+
+    expect(await Bun.file(path.join(rootDir, "locales", "en", "marketingheroPage.js")).exists()).toBe(false);
+    expect(await Bun.file(path.join(rootDir, "locales", "en", "pricingsectionPage.js")).exists()).toBe(false);
+    expect(englishFiles).toContain("Book demo");
+    expect(englishFiles).toContain("Talk to sales");
+    expect(frenchFiles).toContain('"home.');
+  });
+
   it("updates owner and lock metadata", async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-owner-"));
     tempDirectories.push(rootDir);

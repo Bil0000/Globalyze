@@ -85,10 +85,34 @@ export async function updateTranslationGraph(
   }
 
   for (const key of referencedKeys) {
-    const usages = references
-      .filter((reference) => reference.key === key)
-      .map((reference) => toRelativePosixPath(config.rootDir, reference.file));
+    const keyReferences = references.filter((reference) => reference.key === key);
+    const usages = keyReferences.map((reference) =>
+      toRelativePosixPath(config.rootDir, reference.file)
+    );
     const originFile = usages[0];
+    const pageNames = [...new Set(
+      keyReferences
+        .flatMap((reference) =>
+          reference.pageNames && reference.pageNames.length > 0
+            ? reference.pageNames
+            : reference.pageName
+              ? [reference.pageName]
+              : []
+        )
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+    )];
+    const componentNames = [...new Set(
+      keyReferences
+        .map((reference) => reference.componentName)
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+    )];
+    const sourceTypes = [...new Set(
+      keyReferences
+        .map((reference) => reference.sourceType)
+        .filter((value): value is "page" | "component" =>
+          value === "page" || value === "component"
+        )
+    )];
 
     if (!originFile) {
       continue;
@@ -99,6 +123,10 @@ export async function updateTranslationGraph(
       originFile,
       localeFile: localeFileByKey.get(key) ?? "",
       usages: [...new Set(usages)],
+      pageName: pageNames.length === 1 ? pageNames[0] : undefined,
+      pageNames: pageNames.length > 1 ? pageNames : undefined,
+      componentName: componentNames.length === 1 ? componentNames[0] : undefined,
+      sourceType: sourceTypes.length === 1 ? sourceTypes[0] : undefined,
       owner: sourceLocale[key]?.owner,
       locked: sourceLocale[key]?.locked,
       approvalRequired: sourceLocale[key]?.approvalRequired

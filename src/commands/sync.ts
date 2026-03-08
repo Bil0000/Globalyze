@@ -187,7 +187,7 @@ export async function executeSyncCommand(
     "Syncing locale files",
     () =>
       syncLocaleFiles(config, nextSourceLocale, {
-        sourceAssignments: prepared.keyAssignments
+        sourceAssignments: prepared.sourceAssignments
       }),
     () => `Updated locale files in ${config.localesDir}`
   );

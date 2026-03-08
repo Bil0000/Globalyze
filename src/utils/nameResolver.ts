@@ -139,6 +139,231 @@ export function resolveNameMetadata(
     type: "component",
     name: source
       ? resolveComponentName(filePath, source)
-      : camelCase(path.basename(filePath))
+      : camelCase(path.basename(filePath).replace(/\.[^.]+$/, ""))
   };
+}
+
+function toAbsolutePosix(filePath: string): string {
+  return path.resolve(filePath).split(path.sep).join(path.posix.sep);
+}
+
+function parseImports(
+  source: string
+): string[] {
+  const ast = parse(source, {
+    sourceType: "module",
+    plugins: [
+      "jsx",
+      "typescript",
+      "classProperties",
+      "classPrivateProperties",
+      "topLevelAwait",
+      "importAttributes"
+    ]
+  });
+  const imports = new Set<string>();
+
+  traverse(ast, {
+    ImportDeclaration(nodePath) {
+      if (typeof nodePath.node.source.value === "string") {
+        imports.add(nodePath.node.source.value);
+      }
+    },
+    ExportAllDeclaration(nodePath) {
+      if (typeof nodePath.node.source.value === "string") {
+        imports.add(nodePath.node.source.value);
+      }
+    },
+    ExportNamedDeclaration(nodePath) {
+      if (nodePath.node.source && typeof nodePath.node.source.value === "string") {
+        imports.add(nodePath.node.source.value);
+      }
+    }
+  });
+
+  return [...imports];
+}
+
+function deriveSourceRoots(filePaths: readonly string[]): string[] {
+  const roots = new Set<string>();
+
+  for (const filePath of filePaths) {
+    const segments = toAbsolutePosix(filePath).split("/");
+    const sourceIndex = segments.lastIndexOf("src");
+
+    if (sourceIndex >= 0) {
+      roots.add(segments.slice(0, sourceIndex + 1).join("/") || "/");
+    }
+  }
+
+  if (roots.size > 0) {
+    return [...roots];
+  }
+
+  const directories = filePaths.map((filePath) => path.dirname(toAbsolutePosix(filePath)));
+  const commonPrefix = directories.reduce((prefix, current) => {
+    const prefixSegments = prefix.split("/");
+    const currentSegments = current.split("/");
+    const shared: string[] = [];
+
+    for (
+      let index = 0;
+      index < Math.min(prefixSegments.length, currentSegments.length);
+      index += 1
+    ) {
+      if (prefixSegments[index] !== currentSegments[index]) {
+        break;
+      }
+      shared.push(prefixSegments[index] ?? "");
+    }
+
+    return shared.join("/") || "/";
+  });
+
+  return [commonPrefix];
+}
+
+function resolveLocalImport(
+  importerFile: string,
+  specifier: string,
+  knownFiles: Set<string>,
+  sourceRoots: readonly string[]
+): string | null {
+  const basePaths: string[] = [];
+
+  if (specifier.startsWith(".")) {
+    basePaths.push(path.resolve(path.dirname(importerFile), specifier));
+  }
+
+  if (specifier.startsWith("@/")) {
+    for (const sourceRoot of sourceRoots) {
+      basePaths.push(path.resolve(sourceRoot, specifier.slice(2)));
+    }
+  }
+
+  if (basePaths.length === 0) {
+    return null;
+  }
+
+  const candidates = basePaths
+    .flatMap((basePath) => [
+      basePath,
+      `${basePath}.ts`,
+      `${basePath}.tsx`,
+      `${basePath}.js`,
+      `${basePath}.jsx`,
+      path.join(basePath, "index.ts"),
+      path.join(basePath, "index.tsx"),
+      path.join(basePath, "index.js"),
+      path.join(basePath, "index.jsx")
+    ])
+    .map((candidate) => toAbsolutePosix(candidate));
+
+  return candidates.find((candidate) => knownFiles.has(candidate)) ?? null;
+}
+
+export interface ResolvedFileLocalizationMetadata {
+  sourceType: "page" | "component";
+  pageName?: string;
+  pageNames?: string[];
+  componentName?: string;
+}
+
+export async function buildFileLocalizationMetadata(
+  filePaths: readonly string[]
+): Promise<Map<string, ResolvedFileLocalizationMetadata>> {
+  const normalizedFiles = filePaths.map((filePath) => toAbsolutePosix(filePath));
+  const knownFiles = new Set(normalizedFiles);
+  const sourceRoots = deriveSourceRoots(normalizedFiles);
+  const dependencies = new Map<string, string[]>();
+  const pageOwners = new Map<string, Set<string>>();
+  const metadata = new Map<string, ResolvedFileLocalizationMetadata>();
+
+  for (const filePath of normalizedFiles) {
+    const source = await Bun.file(filePath).text();
+    const pageName = resolvePageName(filePath);
+
+    metadata.set(
+      filePath,
+      pageName
+        ? {
+            sourceType: "page",
+            pageName
+          }
+        : {
+            sourceType: "component",
+            componentName: resolveComponentName(filePath, source)
+          }
+    );
+
+    dependencies.set(
+      filePath,
+      parseImports(source)
+        .map((specifier) =>
+          resolveLocalImport(filePath, specifier, knownFiles, sourceRoots)
+        )
+        .filter((resolved): resolved is string => resolved !== null)
+    );
+  }
+
+  const pageFiles = [...metadata.entries()].flatMap(([filePath, value]) =>
+    value.sourceType === "page" && typeof value.pageName === "string"
+      ? [
+          {
+            filePath,
+            pageName: value.pageName
+          }
+        ]
+      : []
+  );
+
+  for (const pageFile of pageFiles) {
+    const queue = [pageFile.filePath];
+    const visited = new Set<string>();
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+
+      if (!current || visited.has(current)) {
+        continue;
+      }
+
+      visited.add(current);
+      const owners = pageOwners.get(current) ?? new Set<string>();
+      owners.add(pageFile.pageName);
+      pageOwners.set(current, owners);
+
+      for (const dependency of dependencies.get(current) ?? []) {
+        if (!visited.has(dependency)) {
+          queue.push(dependency);
+        }
+      }
+    }
+  }
+
+  for (const [filePath, value] of metadata.entries()) {
+    const owners = [...(pageOwners.get(filePath) ?? new Set<string>())];
+
+    if (value.sourceType === "page") {
+      continue;
+    }
+
+    if (owners.length === 1) {
+      metadata.set(filePath, {
+        ...value,
+        pageName: owners[0],
+        pageNames: owners
+      });
+      continue;
+    }
+
+    if (owners.length > 1) {
+      metadata.set(filePath, {
+        ...value,
+        pageNames: owners.sort((left, right) => left.localeCompare(right))
+      });
+    }
+  }
+
+  return metadata;
 }

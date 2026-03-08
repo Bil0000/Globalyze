@@ -83,7 +83,7 @@ export async function processWatchUpdate(
     reconciledSourceLocale,
     {
       preserveExistingOnEmpty: false,
-      sourceAssignments: prepared.keyAssignments
+      sourceAssignments: prepared.sourceAssignments
     }
   );
   let translation: TranslationResult | undefined;

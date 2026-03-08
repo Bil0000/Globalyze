@@ -12,6 +12,7 @@ import { executeRenameCommand } from "../commands/rename";
 import { executeScanCommand } from "../commands/scan";
 import { executeScoreCommand } from "../commands/score";
 import { executeScreenshotCommand } from "../commands/screenshot";
+import { executeSearchCommand } from "../commands/search";
 import { executeSyncCommand } from "../commands/sync";
 import { executeTranslateCommand } from "../commands/translate";
 import { executePreviewCommand } from "../commands/preview";
@@ -19,10 +20,14 @@ import { executeWatchCommand } from "../commands/watch";
 import { executeAddLanguagesCommand } from "../commands/languages";
 import { executeChangeStyleCommand } from "../commands/changeStyle";
 import { executeCleanCommand } from "../commands/clean";
+import { executeDoctorCommand } from "../commands/doctor";
 import { executeDuplicatesCommand } from "../commands/duplicates";
 import { executeDynamicRemoveCommand } from "../commands/dynamicRemove";
+import { executeGraphCommand } from "../commands/graph";
 import { executeGlobalizeCommand } from "../commands/globalize";
+import { executeInspectCommand } from "../commands/inspect";
 import { executeLockCommand, executeUnlockCommand } from "../commands/lock";
+import { executeLocalesCommand } from "../commands/locales";
 import { executeOwnerCommand } from "../commands/owner";
 
 export async function launchInteractiveCLI(): Promise<void> {
@@ -36,19 +41,24 @@ export async function launchInteractiveCLI(): Promise<void> {
       { label: "3. Watch for changes", value: "watch" },
       { label: "4. Show localization report", value: "report" },
       { label: "5. Clean unused translations", value: "clean" },
-      { label: "6. Detect duplicate keys", value: "duplicates" },
-      { label: "7. Rename translation key", value: "rename" },
-      { label: "8. Change locale structure style", value: "style" },
-      { label: "9. Scan project for strings", value: "scan" },
-      { label: "10. Add languages to config", value: "languages" },
-      { label: "11. Remove dynamic translations", value: "dynamic-remove" },
-      { label: "12. Preview transformations", value: "preview" },
-      { label: "13. Generate translations", value: "translate" },
-      { label: "14. Assign translation owner", value: "owner" },
-      { label: "15. Lock or unlock a key", value: "locking" },
-      { label: "16. Analyze screenshot", value: "screenshot" },
-      { label: "17. Show project score", value: "score" },
-      { label: "18. Exit", value: "exit" }
+      { label: "6. Inspect translation key", value: "inspect" },
+      { label: "7. View translation graph", value: "graph" },
+      { label: "8. Search translations", value: "search" },
+      { label: "9. Inspect locale files", value: "locales" },
+      { label: "10. Run localization doctor", value: "doctor" },
+      { label: "11. Detect duplicate keys", value: "duplicates" },
+      { label: "12. Rename translation key", value: "rename" },
+      { label: "13. Change locale structure style", value: "style" },
+      { label: "14. Scan project for strings", value: "scan" },
+      { label: "15. Add languages to config", value: "languages" },
+      { label: "16. Remove dynamic translations", value: "dynamic-remove" },
+      { label: "17. Preview transformations", value: "preview" },
+      { label: "18. Generate translations", value: "translate" },
+      { label: "19. Assign translation owner", value: "owner" },
+      { label: "20. Lock or unlock a key", value: "locking" },
+      { label: "21. Analyze screenshot", value: "screenshot" },
+      { label: "22. Show project score", value: "score" },
+      { label: "23. Exit", value: "exit" }
     ]
   });
 
@@ -191,6 +201,60 @@ export async function launchInteractiveCLI(): Promise<void> {
 
   if (action === "report") {
     await executeReportCommand();
+  }
+
+  if (action === "inspect") {
+    const key = await text({
+      message: "Translation key"
+    });
+
+    if (isCancel(key) || key.trim().length === 0) {
+      cancel("Inspect cancelled.");
+      return;
+    }
+
+    await executeInspectCommand(key.trim());
+  }
+
+  if (action === "graph") {
+    await executeGraphCommand();
+  }
+
+  if (action === "search") {
+    const query = await text({
+      message: "Search text"
+    });
+
+    if (isCancel(query) || query.trim().length === 0) {
+      cancel("Search cancelled.");
+      return;
+    }
+
+    await executeSearchCommand(query.trim());
+  }
+
+  if (action === "locales") {
+    const language = await text({
+      message: "Language code"
+    });
+    const scope = await text({
+      message: "Optional file or key scope",
+      placeholder: "Leave blank for all entries"
+    });
+
+    if (isCancel(language) || language.trim().length === 0) {
+      cancel("Locale inspection cancelled.");
+      return;
+    }
+
+    await executeLocalesCommand(
+      language.trim(),
+      isCancel(scope) || scope.trim().length === 0 ? undefined : scope.trim()
+    );
+  }
+
+  if (action === "doctor") {
+    await executeDoctorCommand();
   }
 
   if (action === "score") {

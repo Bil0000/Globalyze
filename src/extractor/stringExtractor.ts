@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
 import * as t from "@babel/types";
@@ -6,7 +8,12 @@ import type { File } from "@babel/types";
 import type { ExtractedString } from "../types";
 import { GlobalyzeError } from "../utils/errors";
 import { toPosixPath } from "../utils/fileUtils";
-import { resolveComponentName, resolvePageName } from "../utils/nameResolver";
+import {
+  buildFileLocalizationMetadata,
+  resolveComponentName,
+  resolvePageName,
+  type ResolvedFileLocalizationMetadata
+} from "../utils/nameResolver";
 
 const TRANSlatable_ATTRIBUTES = new Set([
   "title",
@@ -70,13 +77,16 @@ function getLocation(
 
 export function extractStringsFromSource(
   source: string,
-  filePath: string
+  filePath: string,
+  metadata?: ResolvedFileLocalizationMetadata
 ): ExtractedString[] {
   const ast = parseSource(source, filePath);
   const extracted: ExtractedString[] = [];
   const normalizedFilePath = toPosixPath(filePath);
-  const componentName = resolveComponentName(filePath, source);
-  const pageName = resolvePageName(filePath) ?? undefined;
+  const componentName =
+    metadata?.componentName ?? resolveComponentName(filePath, source);
+  const pageName = metadata?.pageName ?? resolvePageName(filePath) ?? undefined;
+  const pageNames = metadata?.pageNames;
 
   function resolveElementType(path: {
     parentPath: {
@@ -120,6 +130,7 @@ export function extractStringsFromSource(
         kind: "jsx-text",
         componentName,
         pageName,
+        pageNames,
         elementType: resolveElementType(path)
       });
     },
@@ -151,6 +162,7 @@ export function extractStringsFromSource(
         kind: "jsx-expression-string",
         componentName,
         pageName,
+        pageNames,
         elementType: resolveElementType(path)
       });
     },
@@ -187,6 +199,7 @@ export function extractStringsFromSource(
         attributeName: path.node.name.name,
         componentName,
         pageName,
+        pageNames,
         elementType:
           t.isJSXOpeningElement(path.parentPath.node) &&
           t.isJSXIdentifier(path.parentPath.node.name)
@@ -202,10 +215,15 @@ export function extractStringsFromSource(
 export async function extractStringsFromFiles(
   filePaths: readonly string[]
 ): Promise<ExtractedString[]> {
+  const metadataMap = await buildFileLocalizationMetadata(filePaths);
   const extracted = await Promise.all(
     filePaths.map(async (filePath) => {
       const source = await Bun.file(filePath).text();
-      return extractStringsFromSource(source, filePath);
+      return extractStringsFromSource(
+        source,
+        filePath,
+        metadataMap.get(toPosixPath(path.resolve(filePath)))
+      );
     })
   );
 

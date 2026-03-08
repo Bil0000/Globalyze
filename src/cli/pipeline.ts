@@ -3,7 +3,10 @@ import path from "node:path";
 import { createKeyAssignments, generateSemanticKeys } from "../ai/keyGenerator";
 import { extractDynamicStringsFromFiles } from "../extractor/dynamicExtractor";
 import { extractStringsFromFiles } from "../extractor/stringExtractor";
-import { extractTranslationKeysFromFiles } from "../extractor/translationKeyExtractor";
+import {
+  extractTranslationKeyReferencesFromFiles,
+  extractTranslationKeysFromFiles
+} from "../extractor/translationKeyExtractor";
 import {
   readLocaleDictionary,
   findMissingTranslationKeys,
@@ -42,6 +45,7 @@ export async function collectProjectStrings(
     kind: "jsx-dynamic",
     componentName: item.componentName,
     pageName: item.pageName,
+    pageNames: item.pageNames,
     elementType: item.elementType,
     interpolation: item.variables
   }));
@@ -85,6 +89,7 @@ export async function prepareTransformProject(
     kind: "jsx-dynamic",
     componentName: item.componentName,
     pageName: item.pageName,
+    pageNames: item.pageNames,
     elementType: item.elementType,
     interpolation: item.variables
   }));
@@ -99,6 +104,13 @@ export async function prepareTransformProject(
   const existingTranslationKeys =
     rawStrings.length === 0
       ? await extractTranslationKeysFromFiles(
+          files,
+          config.translationFunctionName
+        )
+      : [];
+  const sourceAssignments =
+    rawStrings.length === 0
+      ? await extractTranslationKeyReferencesFromFiles(
           files,
           config.translationFunctionName
         )
@@ -129,6 +141,8 @@ export async function prepareTransformProject(
     files,
     rawStrings: [...rawStrings, ...normalizedDynamicStrings],
     keyAssignments,
+    sourceAssignments:
+      keyAssignments.length > 0 ? keyAssignments : sourceAssignments,
     keysByText: keyResult.keysByText,
     usedFallbackKeys: keyResult.usedFallback,
     fallbackReason: keyResult.fallbackReason,
@@ -149,7 +163,7 @@ export async function transformProject(
     config,
     buildSourceLocale(prepared.keyAssignments),
     {
-      sourceAssignments: prepared.keyAssignments
+      sourceAssignments: prepared.sourceAssignments
     }
   );
 
@@ -160,6 +174,7 @@ export async function transformProject(
       file: toRelativePosixPath(config.rootDir, item.file)
     })),
     keyAssignments: prepared.keyAssignments,
+    sourceAssignments: prepared.sourceAssignments,
     transformedFiles,
     localeSync,
     usedFallbackKeys: prepared.usedFallbackKeys

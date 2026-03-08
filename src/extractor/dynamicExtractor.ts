@@ -1,3 +1,5 @@
+import path from "node:path";
+
 import { parse } from "@babel/parser";
 import generate from "@babel/generator";
 import traverse from "@babel/traverse";
@@ -6,7 +8,12 @@ import * as t from "@babel/types";
 import type { DynamicExtractionCandidate } from "../types";
 import { GlobalyzeError } from "../utils/errors";
 import { toPosixPath } from "../utils/fileUtils";
-import { resolveComponentName, resolvePageName } from "../utils/nameResolver";
+import {
+  buildFileLocalizationMetadata,
+  resolveComponentName,
+  resolvePageName,
+  type ResolvedFileLocalizationMetadata
+} from "../utils/nameResolver";
 
 function parseSource(source: string, filePath: string) {
   try {
@@ -106,11 +113,14 @@ export function extractDynamicTemplateFromExpression(
 
 export function extractDynamicStringsFromSource(
   source: string,
-  filePath: string
+  filePath: string,
+  metadata?: ResolvedFileLocalizationMetadata
 ): DynamicExtractionCandidate[] {
   const ast = parseSource(source, filePath);
-  const componentName = resolveComponentName(filePath, source);
-  const pageName = resolvePageName(filePath) ?? undefined;
+  const componentName =
+    metadata?.componentName ?? resolveComponentName(filePath, source);
+  const pageName = metadata?.pageName ?? resolvePageName(filePath) ?? undefined;
+  const pageNames = metadata?.pageNames;
   const candidates: DynamicExtractionCandidate[] = [];
 
   traverse(ast, {
@@ -138,6 +148,7 @@ export function extractDynamicStringsFromSource(
         variables: extracted.variables,
         componentName,
         pageName,
+        pageNames,
         elementType:
           path.parentPath.isJSXElement() &&
           t.isJSXIdentifier(path.parentPath.node.openingElement.name)
@@ -153,10 +164,15 @@ export function extractDynamicStringsFromSource(
 export async function extractDynamicStringsFromFiles(
   filePaths: readonly string[]
 ): Promise<DynamicExtractionCandidate[]> {
+  const metadataMap = await buildFileLocalizationMetadata(filePaths);
   const extracted = await Promise.all(
     filePaths.map(async (filePath) => {
       const source = await Bun.file(filePath).text();
-      return extractDynamicStringsFromSource(source, filePath);
+      return extractDynamicStringsFromSource(
+        source,
+        filePath,
+        metadataMap.get(toPosixPath(path.resolve(filePath)))
+      );
     })
   );
 

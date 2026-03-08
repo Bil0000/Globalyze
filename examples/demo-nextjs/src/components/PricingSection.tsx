@@ -1,18 +1,17 @@
+import { t } from "@/i18n";
 export function PricingSection() {
-  return (
-    <section>
-      <h2>Pick your rollout plan</h2>
+  return <section>
+      <h2>{t("home.pricingsection.h2.rollout_plan")}</h2>
       <article>
-        <h3>Starter</h3>
-        <p>Best for teams shipping their first multilingual release.</p>
-        <button>Start free trial</button>
+        <h3>{t("home.pricingsection.h3.starter")}</h3>
+        <p>{t("home.pricingsection.p.starter_desc")}</p>
+        <button>{t("home.pricingsection.button.start_trial")}</button>
       </article>
       <article>
-        <h3>Scale</h3>
-        <p>Ideal for product organizations managing complex global launches.</p>
-        <button>Talk to sales</button>
-        <button>Contact Support Final</button>
+        <h3>{t("home.pricingsection.h3.scale")}</h3>
+        <p>{t("home.pricingsection.p.scale_desc")}</p>
+        <button>{t("home.pricingsection.button.talk_sales")}</button>
+        <button>{t("home.pricingsection.button.contact_support")}</button>
       </article>
-    </section>
-  );
+    </section>;
 }
