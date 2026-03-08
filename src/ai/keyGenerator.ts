@@ -301,6 +301,36 @@ function isRateLimitError(error: unknown): boolean {
   return getErrorStatus(error) === 429;
 }
 
+function normalizeErrorMessage(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function extractRetryDelay(value: string): string | null {
+  const retryMatch =
+    /retry in ([0-9]+(?:\.[0-9]+)?s)/i.exec(value) ??
+    /retryDelay["']?\s*:\s*["']([^"']+)["']/i.exec(value);
+
+  return retryMatch?.[1] ?? null;
+}
+
+function summarizeProviderError(provider: string, error: unknown): string {
+  const rawMessage =
+    error instanceof Error ? normalizeErrorMessage(error.message) : "Unknown error";
+  const rateLimited =
+    isRateLimitError(error) ||
+    /quota exceeded|rate limit|resource_exhausted|too many requests/i.test(
+      rawMessage
+    );
+
+  if (rateLimited) {
+    const retryDelay = extractRetryDelay(rawMessage);
+    return `${provider} rate limit reached. Check quota or billing${retryDelay ? ` and retry in about ${retryDelay}` : " and try again later"}.`;
+  }
+
+  const firstSentence = rawMessage.split(/(?<=[.?!])\s+/)[0] ?? rawMessage;
+  return firstSentence.slice(0, 220);
+}
+
 function extractGeminiText(value: unknown): string {
   if (!isRecord(value)) {
     return "";
@@ -503,16 +533,10 @@ export async function generateSemanticKeys(
           continue;
         } catch (geminiError) {
           usedFallback = true;
-          const openAiReason =
-            error instanceof Error
-              ? error.message
-              : "Unknown OpenAI API failure";
-          const geminiReason =
-            geminiError instanceof Error
-              ? geminiError.message
-              : "Unknown Gemini API failure";
+          const openAiReason = summarizeProviderError("OpenAI", error);
+          const geminiReason = summarizeProviderError("Gemini", geminiError);
 
-          fallbackReason = `OpenAI key generation hit a rate limit (${openAiReason}) and Gemini fallback also failed (${geminiReason}). Deterministic fallback keys were used.`;
+          fallbackReason = `${openAiReason} Gemini fallback also failed: ${geminiReason} Deterministic fallback keys were used for this run.`;
 
           for (const candidate of batch) {
             assignCandidate(candidate, null);
@@ -523,12 +547,11 @@ export async function generateSemanticKeys(
       }
 
       usedFallback = true;
-      const reason =
-        error instanceof Error ? error.message : "Unknown OpenAI API failure";
+      const reason = summarizeProviderError("OpenAI", error);
 
       fallbackReason = isRateLimitError(error) && !geminiApiKey
-        ? `OpenAI key generation hit a rate limit (${reason}), GEMINI_API_KEY is not set, and deterministic fallback keys were used.`
-        : `OpenAI key generation failed: ${reason}. Deterministic fallback keys were used.`;
+        ? `${reason} GEMINI_API_KEY is not set, so deterministic fallback keys were used.`
+        : `OpenAI key generation failed: ${reason} Deterministic fallback keys were used.`;
 
       for (const candidate of batch) {
         assignCandidate(candidate, null);

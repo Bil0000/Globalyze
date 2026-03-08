@@ -7,6 +7,7 @@ import { executeSyncCommand } from "./sync";
 import type { GlobalyzeConfig } from "../types";
 import { loadGlobalyzeConfig, writeTextFile } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
+import { logMigrationHint } from "../utils/progress";
 
 function buildOverrides(options: {
   sourceDir?: string;
@@ -100,6 +101,7 @@ export async function executeGlobalizeCommand(
   );
   const adapter = resolveI18nAdapter(config);
   logger.info(`Using ${adapter.name} adapter for migration.`);
+  logMigrationHint();
 
   const scaffoldPath = await logger.step(
     "Preparing runtime integration guidance",

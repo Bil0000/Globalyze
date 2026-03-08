@@ -228,7 +228,7 @@ describe("generateSemanticKeys", () => {
     });
 
     expect(result.usedFallback).toBe(true);
-    expect(result.fallbackReason).toContain("OpenAI key generation hit a rate limit");
+    expect(result.fallbackReason).toContain("OpenAI rate limit reached");
     expect(result.fallbackReason).toContain("Gemini fallback also failed");
     expect(result.keysByText.get("Checkout")).toBe("checkout.checkout");
   });

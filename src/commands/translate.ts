@@ -9,6 +9,7 @@ import type { GlobalyzeConfig } from "../types";
 import { GlobalyzeError } from "../utils/errors";
 import { loadGlobalyzeConfig } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
+import { logTranslationHint } from "../utils/progress";
 
 function buildOverrides(options: {
   sourceDir?: string;
@@ -80,6 +81,7 @@ export async function executeTranslateCommand(
     return report;
   }
 
+  logTranslationHint();
   const result = await logger.step(
     "Translating locale files",
     () => translateLocales(config),

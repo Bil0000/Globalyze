@@ -9,6 +9,7 @@ import type { GlobalyzeConfig } from "../types";
 import { loadGlobalyzeConfig } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
 import {
+  logAnalysisHint,
   logFallbackReason,
   logInterruptHint,
   logReusedKeyCount
@@ -55,11 +56,12 @@ export async function executeTransformCommand(
     "Loaded configuration"
   );
   logInterruptHint();
+  logAnalysisHint();
   const prepared = await logger.step(
-    "Preparing transformation plan",
+    "Scanning source files and planning code transforms",
     () => prepareTransformProject(config),
     (result) =>
-      `Prepared ${String(result.keyAssignments.length)} translation keys from ${String(result.rawStrings.length)} UI strings`
+      `Planned ${String(result.keyAssignments.length)} translation keys from ${String(result.rawStrings.length)} UI strings`
   );
 
   logFallbackReason(prepared.fallbackReason);

@@ -19,9 +19,11 @@ import type {
 import { loadGlobalyzeConfig } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
 import {
+  logAnalysisHint,
   logFallbackReason,
   logInterruptHint,
-  logReusedKeyCount
+  logReusedKeyCount,
+  logTranslationHint
 } from "../utils/progress";
 import {
   assertGovernanceAllowsChanges,
@@ -155,11 +157,12 @@ export async function executeSyncCommand(
         : "Translation runtime module is ready"
   );
   logInterruptHint();
+  logAnalysisHint();
   const prepared = await logger.step(
-    "Preparing translation sync",
+    "Scanning source files and planning translation changes",
     () => prepareTransformProject(config),
     (result) =>
-      `Prepared ${String(result.keyAssignments.length)} translation keys from ${String(result.rawStrings.length)} UI strings`
+      `Planned ${String(result.keyAssignments.length)} new translation keys from ${String(result.rawStrings.length)} UI strings`
   );
   logFallbackReason(prepared.fallbackReason);
   logReusedKeyCount(prepared.reusedExistingKeys);
@@ -191,11 +194,20 @@ export async function executeSyncCommand(
       }),
     () => `Updated locale files in ${config.localesDir}`
   );
-  const references = await extractTranslationKeyReferencesFromFiles(
-    prepared.files,
-    config.translationFunctionName
+  const references = await logger.step(
+    "Refreshing translation graph",
+    () =>
+      extractTranslationKeyReferencesFromFiles(
+        prepared.files,
+        config.translationFunctionName
+      ),
+    (result) => `Mapped ${String(result.length)} translation key references`
   );
-  await updateTranslationGraph(config, references);
+  await logger.step(
+    "Updating translation graph",
+    () => updateTranslationGraph(config, references),
+    "Updated translation graph"
+  );
   let translation: TranslationResult = {
     translatedLocales: [],
     usedMockTranslations: false,
@@ -203,6 +215,7 @@ export async function executeSyncCommand(
   };
 
   if (localeSync.sourceKeyCount > 0) {
+    logTranslationHint();
     translation = await logger.step(
       "Translating locale files",
       () => translateLocales(config),
