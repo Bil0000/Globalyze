@@ -27,6 +27,9 @@ describe("nameResolver", () => {
     expect(resolvePageName("/tmp/app/src/app/checkout/page.tsx")).toBe("checkout");
     expect(resolvePageName("/tmp/app/src/app/products/[id]/page.tsx")).toBe("products");
     expect(resolvePageName("/tmp/app/src/routes/blog.$slug.tsx")).toBe("blog");
+    expect(resolvePageName("/tmp/app/src/app/components/Table.tsx")).toBeNull();
+    expect(resolvePageName("/tmp/app/src/pages/components/Table.tsx")).toBeNull();
+    expect(resolvePageName("/tmp/app/src/routes/components/Table.tsx")).toBeNull();
   });
 
   it("detects component names from default exports and fallbacks", () => {

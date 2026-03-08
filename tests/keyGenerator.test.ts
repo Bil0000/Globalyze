@@ -4,10 +4,26 @@ import type { ExtractedString } from "../src/types";
 
 describe("generateSemanticKeys", () => {
   const originalFetch = globalThis.fetch;
+  const originalOpenAiKeys = process.env.OPENAI_API_KEYS;
+  const originalOpenAiKey2 = process.env.OPENAI_API_KEY_2;
+  const originalGeminiKeys = process.env.GEMINI_API_KEYS;
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
     delete process.env.GEMINI_API_KEY;
+    delete process.env.OPENAI_API_KEYS;
+    delete process.env.OPENAI_API_KEY_2;
+    delete process.env.GEMINI_API_KEYS;
+
+    if (originalOpenAiKeys !== undefined) {
+      process.env.OPENAI_API_KEYS = originalOpenAiKeys;
+    }
+    if (originalOpenAiKey2 !== undefined) {
+      process.env.OPENAI_API_KEY_2 = originalOpenAiKey2;
+    }
+    if (originalGeminiKeys !== undefined) {
+      process.env.GEMINI_API_KEYS = originalGeminiKeys;
+    }
   });
 
   function createRateLimitedOpenAIClient(
@@ -199,7 +215,7 @@ describe("generateSemanticKeys", () => {
     });
 
     expect(result.usedFallback).toBe(true);
-    expect(result.fallbackReason).toContain("GEMINI_API_KEY is not set");
+    expect(result.fallbackReason).toContain("No Gemini keys are configured");
     expect(result.keysByText.get("Checkout")).toBe("checkout.checkout");
   });
 
@@ -231,5 +247,111 @@ describe("generateSemanticKeys", () => {
     expect(result.fallbackReason).toContain("OpenAI rate limit reached");
     expect(result.fallbackReason).toContain("Gemini fallback also failed");
     expect(result.keysByText.get("Checkout")).toBe("checkout.checkout");
+  });
+
+  it("rotates through multiple OpenAI keys until one succeeds", async () => {
+    const strings: ExtractedString[] = [
+      {
+        text: "Checkout",
+        file: "/tmp/demo/src/app/checkout/page.tsx",
+        line: 3,
+        column: 5,
+        kind: "jsx-text"
+      }
+    ];
+    process.env.OPENAI_API_KEYS = "openai-1";
+    process.env.OPENAI_API_KEY_2 = "openai-2";
+    const attempts: string[] = [];
+
+    const result = await generateSemanticKeys(strings, {
+      apiKeys: ["openai-1", "openai-2"],
+      openAIClientFactory: (apiKey) => ({
+        responses: {
+          create: mock(() => {
+            attempts.push(apiKey);
+
+            if (apiKey === "openai-1") {
+              const error = new Error("rate limited");
+              (error as Error & { status?: number }).status = 429;
+              return Promise.reject(error);
+            }
+
+            return Promise.resolve({
+              output_text:
+                '{"items":[{"text":"Checkout","key":"checkout.button"}]}'
+            });
+          }) as unknown as (input: {
+            model: string;
+            input: string;
+          }) => Promise<{ output_text: string }>
+        }
+      })
+    });
+
+    expect(attempts).toEqual(["openai-1", "openai-2"]);
+    expect(result.keysByText.get("Checkout")).toBe("checkout.button");
+  });
+
+  it("rotates through multiple Gemini keys after OpenAI keys are exhausted", async () => {
+    const strings: ExtractedString[] = [
+      {
+        text: "Checkout",
+        file: "/tmp/demo/src/app/checkout/page.tsx",
+        line: 3,
+        column: 5,
+        kind: "jsx-text"
+      }
+    ];
+
+    process.env.GEMINI_API_KEYS = "gemini-1,gemini-2";
+    const geminiAttempts: string[] = [];
+
+    const fetchImpl = mock((input: string | URL, init?: RequestInit) => {
+      void input;
+      const headers = (init?.headers ?? {}) as Record<string, unknown>;
+      const apiKey =
+        typeof headers["x-goog-api-key"] === "string"
+          ? headers["x-goog-api-key"]
+          : "";
+      geminiAttempts.push(apiKey);
+
+      if (apiKey === "gemini-1") {
+        return Promise.resolve(new Response("rate limited", { status: 429 }));
+      }
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            candidates: [
+              {
+                content: {
+                  parts: [
+                    {
+                      text:
+                        '{"items":[{"text":"Checkout","key":"checkout.button"}]}'
+                    }
+                  ]
+                }
+              }
+            ]
+          }),
+          {
+            status: 200,
+            headers: {
+              "Content-Type": "application/json"
+            }
+          }
+        )
+      );
+    });
+
+    const result = await generateSemanticKeys(strings, {
+      apiKey: "openai-test-key",
+      openAIClient: createRateLimitedOpenAIClient("rate limit"),
+      fetchImpl: fetchImpl as unknown as typeof fetch
+    });
+
+    expect(geminiAttempts).toEqual(["gemini-1", "gemini-2"]);
+    expect(result.keysByText.get("Checkout")).toBe("checkout.button");
   });
 });

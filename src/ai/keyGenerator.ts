@@ -25,6 +25,19 @@ interface OpenAIKeyGenerationClient {
   };
 }
 
+interface KeyGenerationProviderOptions {
+  apiKey?: string;
+  apiKeys?: readonly string[];
+  model?: string;
+  geminiModel?: string;
+  batchSize?: number;
+  existingLocale?: LocaleDictionary;
+  openAIClient?: OpenAIKeyGenerationClient;
+  openAIClientFactory?: (apiKey: string) => OpenAIKeyGenerationClient;
+  geminiApiKeys?: readonly string[];
+  fetchImpl?: typeof fetch;
+}
+
 const GENERIC_FILE_SEGMENTS = new Set([
   "src",
   "app",
@@ -331,6 +344,51 @@ function summarizeProviderError(provider: string, error: unknown): string {
   return firstSentence.slice(0, 220);
 }
 
+function parseKeyList(value: string): string[] {
+  return value
+    .split(/[\n,]/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function resolveApiKeys(
+  singleKeyName: string,
+  multipleKeyName: string
+): string[] {
+  const resolved = new Set<string>();
+  const singleValue = process.env[singleKeyName];
+
+  if (typeof singleValue === "string" && singleValue.trim().length > 0) {
+    resolved.add(singleValue.trim());
+  }
+
+  const listValue = process.env[multipleKeyName];
+
+  if (typeof listValue === "string" && listValue.trim().length > 0) {
+    for (const key of parseKeyList(listValue)) {
+      resolved.add(key);
+    }
+  }
+
+  const numberedValues = Object.entries(process.env)
+    .filter(([key, value]) => {
+      if (!key.startsWith(`${singleKeyName}_`)) {
+        return false;
+      }
+
+      return typeof value === "string" && value.trim().length > 0;
+    })
+    .sort(([left], [right]) => left.localeCompare(right, undefined, { numeric: true }))
+    .map(([, value]) => value?.trim() ?? "")
+    .filter(Boolean);
+
+  for (const key of numberedValues) {
+    resolved.add(key);
+  }
+
+  return [...resolved];
+}
+
 function extractGeminiText(value: unknown): string {
   if (!isRecord(value)) {
     return "";
@@ -408,24 +466,144 @@ async function generateBatchWithGemini(
   return parseResponse(extractGeminiText(payload));
 }
 
+async function tryGenerateBatchWithOpenAIKeys(
+  batch: readonly KeyGenerationCandidate[],
+  apiKeys: readonly string[],
+  model: string,
+  startIndex: number,
+  clientFactory: (apiKey: string) => OpenAIKeyGenerationClient
+): Promise<{
+  generated?: Map<string, string>;
+  nextIndex: number;
+  exhaustedRateLimit: boolean;
+  lastError?: unknown;
+}> {
+  if (apiKeys.length === 0) {
+    return {
+      nextIndex: 0,
+      exhaustedRateLimit: false
+    };
+  }
+
+  let lastError: unknown;
+
+  for (let offset = 0; offset < apiKeys.length; offset += 1) {
+    const index = (startIndex + offset) % apiKeys.length;
+    const apiKey = apiKeys[index];
+
+    if (apiKey === undefined || apiKey.length === 0) {
+      continue;
+    }
+
+    try {
+      const generated = await generateBatchWithOpenAI(
+        clientFactory(apiKey),
+        model,
+        batch
+      );
+
+      return {
+        generated,
+        nextIndex: (index + 1) % apiKeys.length,
+        exhaustedRateLimit: false
+      };
+    } catch (error) {
+      lastError = error;
+
+      if (!isRateLimitError(error)) {
+        return {
+          nextIndex: (index + 1) % apiKeys.length,
+          exhaustedRateLimit: false,
+          lastError
+        };
+      }
+    }
+  }
+
+  return {
+    nextIndex: (startIndex + 1) % apiKeys.length,
+    exhaustedRateLimit: true,
+    lastError
+  };
+}
+
+async function tryGenerateBatchWithGeminiKeys(
+  batch: readonly KeyGenerationCandidate[],
+  apiKeys: readonly string[],
+  model: string,
+  startIndex: number,
+  fetchImpl: typeof fetch
+): Promise<{
+  generated?: Map<string, string>;
+  nextIndex: number;
+  exhaustedRateLimit: boolean;
+  lastError?: unknown;
+}> {
+  if (apiKeys.length === 0) {
+    return {
+      nextIndex: 0,
+      exhaustedRateLimit: false
+    };
+  }
+
+  let lastError: unknown;
+
+  for (let offset = 0; offset < apiKeys.length; offset += 1) {
+    const index = (startIndex + offset) % apiKeys.length;
+    const apiKey = apiKeys[index];
+
+    if (apiKey === undefined || apiKey.length === 0) {
+      continue;
+    }
+
+    try {
+      const generated = await generateBatchWithGemini(
+        apiKey,
+        model,
+        batch,
+        fetchImpl
+      );
+
+      return {
+        generated,
+        nextIndex: (index + 1) % apiKeys.length,
+        exhaustedRateLimit: false
+      };
+    } catch (error) {
+      lastError = error;
+
+      if (!isRateLimitError(error)) {
+        return {
+          nextIndex: (index + 1) % apiKeys.length,
+          exhaustedRateLimit: false,
+          lastError
+        };
+      }
+    }
+  }
+
+  return {
+    nextIndex: (startIndex + 1) % apiKeys.length,
+    exhaustedRateLimit: true,
+    lastError
+  };
+}
+
 export async function generateSemanticKeys(
   strings: readonly ExtractedString[],
-  options: {
-    apiKey?: string;
-    model?: string;
-    geminiModel?: string;
-    batchSize?: number;
-    existingLocale?: LocaleDictionary;
-    openAIClient?: OpenAIKeyGenerationClient;
-    fetchImpl?: typeof fetch;
-  } = {}
+  options: KeyGenerationProviderOptions = {}
 ): Promise<KeyGenerationResult> {
   const candidates = dedupeCandidates(strings);
   const keysByText = new Map<string, string>();
   const existingLocale = options.existingLocale ?? {};
   const reservedKeys = new Set<string>();
-  const apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
-  const geminiApiKey = process.env.GEMINI_API_KEY;
+  const openAiKeys =
+    options.apiKeys ??
+    (options.apiKey
+      ? [options.apiKey]
+      : resolveApiKeys("OPENAI_API_KEY", "OPENAI_API_KEYS"));
+  const geminiApiKeys =
+    options.geminiApiKeys ?? resolveApiKeys("GEMINI_API_KEY", "GEMINI_API_KEYS");
   const model = options.model ?? "gpt-4o-mini";
   const geminiModel = options.geminiModel ?? GEMINI_FALLBACK_MODEL;
   const batchSize = options.batchSize ?? 20;
@@ -433,6 +611,8 @@ export async function generateSemanticKeys(
   let fallbackReason: string | undefined;
   let reusedExistingKeys = 0;
   const pendingCandidates: KeyGenerationCandidate[] = [];
+  let nextOpenAiKeyIndex = 0;
+  let nextGeminiKeyIndex = 0;
 
   const assignCandidate = (
     candidate: KeyGenerationCandidate,
@@ -475,10 +655,10 @@ export async function generateSemanticKeys(
     pendingCandidates.push(candidate);
   }
 
-  if (!apiKey) {
+  if (openAiKeys.length === 0) {
     usedFallback = true;
     fallbackReason =
-      "OPENAI_API_KEY is not set, so deterministic fallback keys were used.";
+      "No OpenAI keys are configured, so deterministic fallback keys were used.";
 
     for (const candidate of pendingCandidates) {
       assignCandidate(candidate, null);
@@ -492,15 +672,28 @@ export async function generateSemanticKeys(
     };
   }
 
-  const client =
-    options.openAIClient ?? (new OpenAI({ apiKey }) as OpenAIKeyGenerationClient);
+  const sharedOpenAiClient = options.openAIClient;
+  const openAiClientFactory: (apiKey: string) => OpenAIKeyGenerationClient =
+    options.openAIClientFactory ??
+    (sharedOpenAiClient
+      ? () => sharedOpenAiClient
+      : (apiKey: string) => new OpenAI({ apiKey }) as OpenAIKeyGenerationClient);
+  const fetchImpl = options.fetchImpl ?? fetch;
 
   for (let index = 0; index < pendingCandidates.length; index += batchSize) {
     const batch = pendingCandidates.slice(index, index + batchSize);
 
-    try {
-      const generated = await generateBatchWithOpenAI(client, model, batch);
+    const openAiAttempt = await tryGenerateBatchWithOpenAIKeys(
+      batch,
+      openAiKeys,
+      model,
+      nextOpenAiKeyIndex,
+      openAiClientFactory
+    );
+    nextOpenAiKeyIndex = openAiAttempt.nextIndex;
 
+    if (openAiAttempt.generated) {
+      const generated = openAiAttempt.generated;
       if (generated.size === 0 && batch.length > 0) {
         usedFallback = true;
         fallbackReason =
@@ -510,52 +703,64 @@ export async function generateSemanticKeys(
       for (const candidate of batch) {
         assignCandidate(candidate, generated.get(candidate.text) ?? null);
       }
-    } catch (error) {
-      if (isRateLimitError(error) && geminiApiKey) {
-        try {
-          const generated = await generateBatchWithGemini(
-            geminiApiKey,
-            geminiModel,
-            batch,
-            options.fetchImpl
-          );
 
-          if (generated.size === 0 && batch.length > 0) {
-            usedFallback = true;
-            fallbackReason =
-              "OpenAI rate limits were reached, Gemini returned an invalid key payload, and deterministic fallback keys were used.";
-          }
+      continue;
+    }
 
-          for (const candidate of batch) {
-            assignCandidate(candidate, generated.get(candidate.text) ?? null);
-          }
+    if (openAiAttempt.exhaustedRateLimit && geminiApiKeys.length > 0) {
+      const geminiAttempt = await tryGenerateBatchWithGeminiKeys(
+        batch,
+        geminiApiKeys,
+        geminiModel,
+        nextGeminiKeyIndex,
+        fetchImpl
+      );
+      nextGeminiKeyIndex = geminiAttempt.nextIndex;
 
-          continue;
-        } catch (geminiError) {
+      if (geminiAttempt.generated) {
+        const generated = geminiAttempt.generated;
+
+        if (generated.size === 0 && batch.length > 0) {
           usedFallback = true;
-          const openAiReason = summarizeProviderError("OpenAI", error);
-          const geminiReason = summarizeProviderError("Gemini", geminiError);
-
-          fallbackReason = `${openAiReason} Gemini fallback also failed: ${geminiReason} Deterministic fallback keys were used for this run.`;
-
-          for (const candidate of batch) {
-            assignCandidate(candidate, null);
-          }
-
-          continue;
+          fallbackReason =
+            "All configured AI keys returned an invalid key payload, so deterministic fallback keys were used.";
         }
+
+        for (const candidate of batch) {
+          assignCandidate(candidate, generated.get(candidate.text) ?? null);
+        }
+
+        continue;
       }
 
       usedFallback = true;
-      const reason = summarizeProviderError("OpenAI", error);
+      const openAiReason = summarizeProviderError(
+        "OpenAI",
+        openAiAttempt.lastError
+      );
+      const geminiReason =
+        geminiAttempt.lastError !== undefined
+          ? summarizeProviderError("Gemini", geminiAttempt.lastError)
+          : "No Gemini keys are configured.";
 
-      fallbackReason = isRateLimitError(error) && !geminiApiKey
-        ? `${reason} GEMINI_API_KEY is not set, so deterministic fallback keys were used.`
-        : `OpenAI key generation failed: ${reason} Deterministic fallback keys were used.`;
+      fallbackReason = `${openAiReason} Gemini fallback also failed: ${geminiReason} Deterministic fallback keys were used for this run.`;
 
       for (const candidate of batch) {
         assignCandidate(candidate, null);
       }
+
+      continue;
+    }
+
+    usedFallback = true;
+    const reason = summarizeProviderError("OpenAI", openAiAttempt.lastError);
+
+    fallbackReason = openAiAttempt.exhaustedRateLimit && geminiApiKeys.length === 0
+      ? `${reason} No Gemini keys are configured, so deterministic fallback keys were used.`
+      : `OpenAI key generation failed: ${reason} Deterministic fallback keys were used.`;
+
+    for (const candidate of batch) {
+      assignCandidate(candidate, null);
     }
   }
 

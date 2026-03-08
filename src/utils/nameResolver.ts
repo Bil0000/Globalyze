@@ -6,6 +6,19 @@ import * as t from "@babel/types";
 
 import type { ResolvedNameMetadata } from "../types";
 
+const NON_ROUTE_SEGMENTS = new Set([
+  "components",
+  "component",
+  "ui",
+  "widgets",
+  "tables",
+  "hooks",
+  "lib",
+  "utils",
+  "providers",
+  "context"
+]);
+
 function toPosix(filePath: string): string {
   return filePath.split(path.sep).join(path.posix.sep);
 }
@@ -40,14 +53,30 @@ function normalizeSegments(segments: readonly string[]): string[] {
     .filter((segment) => segment.length > 0 && segment !== "index");
 }
 
+function isLikelySupportPath(segments: readonly string[]): boolean {
+  return segments.some((segment) => NON_ROUTE_SEGMENTS.has(slugify(segment)));
+}
+
 export function resolvePageName(filePath: string): string | null {
   const normalized = toPosix(filePath);
   const segments = normalized.split("/").filter(Boolean);
   const pagesIndex = segments.lastIndexOf("pages");
   const appIndex = segments.lastIndexOf("app");
   const routesIndex = segments.lastIndexOf("routes");
+  const fileName = path.basename(normalized);
+  const baseName = slugify(fileName);
 
   if (pagesIndex >= 0) {
+    const routeSegments = segments.slice(pagesIndex + 1, -1);
+
+    if (
+      routeSegments[0] === "api" ||
+      fileName.startsWith("_") ||
+      isLikelySupportPath(routeSegments)
+    ) {
+      return null;
+    }
+
     const relevant = normalizeSegments(segments.slice(pagesIndex + 1));
 
     if (relevant.length === 0) {
@@ -61,15 +90,31 @@ export function resolvePageName(filePath: string): string | null {
   }
 
   if (appIndex >= 0) {
-    const relevant = normalizeSegments(segments.slice(appIndex + 1));
-    const filtered = relevant.filter(
-      (segment) => segment !== "page" && segment !== "layout"
-    );
+    if (routesIndex < 0) {
+      if (!["page", "layout"].includes(baseName)) {
+        return null;
+      }
 
-    return filtered.at(-1) ?? "home";
+      const relevant = normalizeSegments(segments.slice(appIndex + 1));
+      const filtered = relevant.filter(
+        (segment) => segment !== "page" && segment !== "layout"
+      );
+
+      return filtered.at(-1) ?? "home";
+    }
   }
 
   if (routesIndex >= 0) {
+    const routeSegments = segments.slice(routesIndex + 1, -1);
+
+    if (
+      isLikelySupportPath(routeSegments) ||
+      fileName === "routeTree.gen.ts" ||
+      fileName === "routeTree.gen.tsx"
+    ) {
+      return null;
+    }
+
     const relevant = normalizeSegments(segments.slice(routesIndex + 1));
     return relevant.at(-1) ?? "home";
   }

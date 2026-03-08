@@ -188,15 +188,27 @@ Common variables:
 
 ```bash
 OPENAI_API_KEY=your_openai_key
+OPENAI_API_KEYS=your_openai_key_1,your_openai_key_2
+OPENAI_API_KEY_3=your_openai_key_3
 GEMINI_API_KEY=your_gemini_key
+GEMINI_API_KEYS=your_gemini_key_1,your_gemini_key_2
+GEMINI_API_KEY_3=your_gemini_key_3
 LINGO_API_KEY=your_lingo_key
 ```
 
+Globalyze supports:
+
+- single keys via `OPENAI_API_KEY` and `GEMINI_API_KEY`
+- comma-separated key pools via `OPENAI_API_KEYS` and `GEMINI_API_KEYS`
+- numbered keys like `OPENAI_API_KEY_2`, `OPENAI_API_KEY_3`, `GEMINI_API_KEY_2`, and so on
+
+For semantic key generation, Globalyze rotates through all configured OpenAI keys first. If every OpenAI key is rate-limited, it rotates through all configured Gemini keys. If both pools are exhausted, it falls back to deterministic keys for that run.
+
 Behavior when keys are missing:
 
-- No `OPENAI_API_KEY`: Globalyze uses deterministic fallback keys
-- OpenAI rate-limited (`429`) and `GEMINI_API_KEY` is set: Globalyze retries semantic key generation with Gemini using a low-cost fallback model
-- OpenAI rate-limited and no Gemini key is configured: Globalyze warns and falls back to deterministic keys
+- No OpenAI keys configured: Globalyze uses deterministic fallback keys
+- OpenAI rate-limited (`429`) and Gemini keys are configured: Globalyze retries semantic key generation with Gemini using a low-cost fallback model
+- OpenAI rate-limited and no Gemini keys are configured: Globalyze warns and falls back to deterministic keys
 - OpenAI and Gemini both rate-limited or unavailable: Globalyze warns in the CLI and falls back to deterministic keys
 - No `LINGO_API_KEY`: Globalyze copies English source values into target locales
 
