@@ -3,6 +3,14 @@ import logSymbols from "log-symbols";
 import ora, { type Ora } from "ora";
 
 export class Logger {
+  newline(): void {
+    console.log("");
+  }
+
+  heading(message: string): void {
+    console.log(chalk.bold(message));
+  }
+
   start(message: string): Ora {
     return ora({
       text: message,

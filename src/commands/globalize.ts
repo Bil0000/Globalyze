@@ -55,10 +55,26 @@ async function writeAdapterScaffold(
 export function registerGlobalizeCommand(program: Command): void {
   program
     .command("globalize")
-    .description("Migrate an existing project into an internationalized project")
+    .description("Convert a project to use internationalization")
+    .summary("Run the one-time migration workflow")
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .option("--source-dir <path>", "Override the configured source directory")
     .option("--locales-dir <path>", "Override the configured locales directory")
+    .addHelpText(
+      "after",
+      [
+        "",
+        "Actions performed:",
+        "- scan source files",
+        "- extract hardcoded UI strings",
+        "- generate semantic keys",
+        "- transform JSX source",
+        "- sync locale files",
+        "- translate initial locale entries",
+        "- generate adapter guidance when runtime injection is ambiguous",
+        ""
+      ].join("\n")
+    )
     .action(
       async (options: {
         config?: string;
@@ -98,5 +114,9 @@ export async function executeGlobalizeCommand(
     );
   }
 
-  return executeSyncCommand(options);
+  const result = await executeSyncCommand(options);
+  logger.newline();
+  logger.heading("Globalyze Migration Complete");
+  logger.info("Project globalization setup finished.");
+  return result;
 }

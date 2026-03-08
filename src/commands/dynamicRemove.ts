@@ -19,7 +19,7 @@ function buildOverrides(options: {
 export function registerDynamicRemoveCommand(program: Command): void {
   program
     .command("dynamic-remove")
-    .description("Revert dynamic translation calls back into JSX expressions")
+    .description("Revert dynamic extraction transforms")
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .option("--source-dir <path>", "Override the configured source directory")
     .option("--locales-dir <path>", "Override the configured locales directory")

@@ -8,11 +8,11 @@ import {
 } from "@clack/prompts";
 
 import { executeReportCommand } from "../commands/report";
+import { executeRenameCommand } from "../commands/rename";
 import { executeScanCommand } from "../commands/scan";
 import { executeScoreCommand } from "../commands/score";
 import { executeScreenshotCommand } from "../commands/screenshot";
 import { executeSyncCommand } from "../commands/sync";
-import { executeTransformCommand } from "../commands/transform";
 import { executeTranslateCommand } from "../commands/translate";
 import { executePreviewCommand } from "../commands/preview";
 import { executeWatchCommand } from "../commands/watch";
@@ -26,29 +26,29 @@ import { executeLockCommand, executeUnlockCommand } from "../commands/lock";
 import { executeOwnerCommand } from "../commands/owner";
 
 export async function launchInteractiveCLI(): Promise<void> {
-  intro("🌍 Globalyze — Automatic App Localization");
+  intro("Globalyze CLI");
 
   const action = await select({
     message: "Select an action",
     options: [
-      { label: "Scan project for strings", value: "scan" },
-      { label: "Globalize project", value: "globalize" },
-      { label: "Sync translations", value: "sync" },
-      { label: "Add languages to config", value: "languages" },
-      { label: "Change locale file style", value: "style" },
-      { label: "Remove dynamic translations", value: "dynamic-remove" },
-      { label: "Preview transformations", value: "preview" },
-      { label: "Transform source code", value: "transform" },
-      { label: "Generate translations", value: "translate" },
-      { label: "Show duplicate translations", value: "duplicates" },
-      { label: "Clean unused locale keys", value: "clean" },
-      { label: "Assign translation owner", value: "owner" },
-      { label: "Lock or unlock a key", value: "locking" },
-      { label: "Watch for new strings", value: "watch" },
-      { label: "Analyze screenshot", value: "screenshot" },
-      { label: "Show translation report", value: "report" },
-      { label: "Show project score", value: "score" },
-      { label: "Exit", value: "exit" }
+      { label: "1. Globalize project", value: "globalize" },
+      { label: "2. Sync translations", value: "sync" },
+      { label: "3. Watch for changes", value: "watch" },
+      { label: "4. Show localization report", value: "report" },
+      { label: "5. Clean unused translations", value: "clean" },
+      { label: "6. Detect duplicate keys", value: "duplicates" },
+      { label: "7. Rename translation key", value: "rename" },
+      { label: "8. Change locale structure style", value: "style" },
+      { label: "9. Scan project for strings", value: "scan" },
+      { label: "10. Add languages to config", value: "languages" },
+      { label: "11. Remove dynamic translations", value: "dynamic-remove" },
+      { label: "12. Preview transformations", value: "preview" },
+      { label: "13. Generate translations", value: "translate" },
+      { label: "14. Assign translation owner", value: "owner" },
+      { label: "15. Lock or unlock a key", value: "locking" },
+      { label: "16. Analyze screenshot", value: "screenshot" },
+      { label: "17. Show project score", value: "score" },
+      { label: "18. Exit", value: "exit" }
     ]
   });
 
@@ -94,16 +94,33 @@ export async function launchInteractiveCLI(): Promise<void> {
     await executeDynamicRemoveCommand();
   }
 
-  if (action === "transform") {
-    await executeTransformCommand();
-  }
-
   if (action === "translate") {
     await executeTranslateCommand();
   }
 
   if (action === "duplicates") {
     await executeDuplicatesCommand();
+  }
+
+  if (action === "rename") {
+    const oldKey = await text({
+      message: "Current translation key"
+    });
+    const newKey = await text({
+      message: "New translation key"
+    });
+
+    if (
+      isCancel(oldKey) ||
+      isCancel(newKey) ||
+      oldKey.trim().length === 0 ||
+      newKey.trim().length === 0
+    ) {
+      cancel("Rename cancelled.");
+      return;
+    }
+
+    await executeRenameCommand(oldKey.trim(), newKey.trim());
   }
 
   if (action === "clean") {

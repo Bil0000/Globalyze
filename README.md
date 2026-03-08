@@ -206,6 +206,63 @@ Behavior when keys are missing:
 
 Launches the interactive menu.
 
+### Primary Commands
+
+### `globalyze globalize`
+
+Runs the one-time migration workflow for a non-internationalized project.
+
+What it does:
+
+- scans for hardcoded UI strings
+- generates semantic keys
+- transforms source code
+- syncs locale files
+- translates target locales
+- writes adapter guidance when runtime/provider injection is ambiguous
+
+### `globalyze sync`
+
+Maintains an already-globalized project.
+
+What it does:
+
+- detects new UI strings
+- updates locale files
+- translates new entries
+- refreshes the translation graph
+- applies governance checks for owned, locked, and approval-required keys
+
+### `globalyze watch`
+
+Watches the source directory for new hardcoded strings, transforms changed files, and syncs locales.
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+
+Note:
+
+- `watch` updates source files, syncs locale files, translates new keys into target locales, and removes deleted keys from locale outputs
+
+### `globalyze report`
+
+Shows translation coverage by language and lists missing keys.
+
+Options:
+
+- `-c, --config <path>`
+- `--source-dir <path>`
+- `--locales-dir <path>`
+
+### `globalyze clean`
+
+Finds unused locale keys. Use `--fix` to remove them from locale files.
+
+### Maintenance Commands
+
 ### `globalyze init`
 
 Creates `globalyze.config.ts` in the current directory.
@@ -254,35 +311,6 @@ Options:
 
 - `-c, --config <path>`
 
-### `globalyze globalize`
-
-Runs the one-time migration workflow for a non-internationalized project.
-
-What it does:
-
-- scans for hardcoded UI strings
-- generates semantic keys
-- transforms source code
-- syncs locale files
-- translates target locales
-- writes adapter guidance when runtime/provider injection is ambiguous
-
-### `globalyze sync`
-
-Maintains an already-globalized project.
-
-What it does:
-
-- detects new UI strings
-- updates locale files
-- translates new entries
-- refreshes the translation graph
-- applies governance checks for owned, locked, and approval-required keys
-
-### `globalyze run`
-
-Deprecated alias for `globalyze sync`.
-
 ### `globalyze dynamic-remove`
 
 Reverts interpolated `t(key, params)` calls back into JSX string expressions using the source locale templates.
@@ -294,6 +322,26 @@ Finds multiple translation keys that share the same source text.
 ### `globalyze clean`
 
 Finds unused locale keys. Use `--fix` to remove them from locale files.
+
+### Governance Commands
+
+### `globalyze owner <key> <team>`
+
+Assigns ownership metadata to a translation key.
+
+### `globalyze lock <key>`
+
+Locks a translation key against automatic value changes.
+
+### `globalyze unlock <key>`
+
+Unlocks a translation key so it can be updated again.
+
+### Legacy
+
+### `globalyze run`
+
+Deprecated alias for `globalyze sync`.
 
 ### `globalyze rename <oldKey> <newKey>`
 
@@ -342,16 +390,6 @@ Options:
 - `--locales-dir <path>`
 - `--check` validate locale coverage without translating
 
-### `globalyze report`
-
-Shows translation coverage by language and lists missing keys.
-
-Options:
-
-- `-c, --config <path>`
-- `--source-dir <path>`
-- `--locales-dir <path>`
-
 ### `globalyze score`
 
 Generates an i18n quality score from coverage, hardcoded string count, and locale health.
@@ -371,20 +409,6 @@ Options:
 - `-c, --config <path>`
 - `--source-dir <path>`
 - `--locales-dir <path>`
-
-### `globalyze watch`
-
-Watches the source directory for new hardcoded strings, transforms changed files, and syncs locales.
-
-Options:
-
-- `-c, --config <path>`
-- `--source-dir <path>`
-- `--locales-dir <path>`
-
-Note:
-
-- `watch` updates source files, syncs locale files, translates new keys into target locales, and removes deleted keys from locale outputs
 
 ## Configuration
 

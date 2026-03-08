@@ -20,6 +20,7 @@ function resolveConfigPath(configPath?: string): string {
 export function registerChangeStyleCommand(program: Command): void {
   program
     .command("style")
+    .alias("change-style")
     .description("Change the locale file storage style without regenerating keys")
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .action(async (options: { config?: string }) => {

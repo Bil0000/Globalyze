@@ -5,6 +5,7 @@ import { readLocaleDictionary, writeLocaleDictionary } from "../i18n/localeManag
 import { scanProjectFiles } from "../scanner/projectScanner";
 import type { GlobalyzeConfig, LocaleDictionary } from "../types";
 import { loadGlobalyzeConfig } from "../utils/fileUtils";
+import { logger } from "../utils/logger";
 
 function buildOverrides(options: {
   sourceDir?: string;
@@ -19,11 +20,24 @@ function buildOverrides(options: {
 export function registerCleanCommand(program: Command): void {
   program
     .command("clean")
-    .description("Detect unused locale keys and optionally remove them")
+    .description("Remove unused translations")
+    .summary("Detect or delete locale keys no longer used in source")
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .option("--source-dir <path>", "Override the configured source directory")
     .option("--locales-dir <path>", "Override the configured locales directory")
     .option("--fix", "Remove unused keys from locale files", false)
+    .addHelpText(
+      "after",
+      [
+        "",
+        "Actions performed:",
+        "- scan source files",
+        "- detect active translation keys",
+        "- compare locale entries",
+        "- optionally remove unused keys with --fix",
+        ""
+      ].join("\n")
+    )
     .action(async (options: { config?: string; sourceDir?: string; localesDir?: string; fix?: boolean }) => {
       await executeCleanCommand(options);
     });
@@ -50,6 +64,26 @@ export async function executeCleanCommand(
       );
       await writeLocaleDictionary(config, language, nextLocale);
     }
+  }
+
+  const totalUnused = Object.values(unusedByLanguage).reduce(
+    (count, keys) => count + keys.length,
+    0
+  );
+
+  if (totalUnused === 0) {
+    logger.success("No unused locale keys were found.");
+    return unusedByLanguage;
+  }
+
+  logger.heading(options.fix ? "Unused Translations Removed" : "Unused Translations Found");
+  logger.info(`Total Unused Keys: ${String(totalUnused)}`);
+  for (const [language, keys] of Object.entries(unusedByLanguage)) {
+    if (keys.length === 0) {
+      continue;
+    }
+    logger.info(`${language}: ${String(keys.length)} keys`);
+    logger.list(keys);
   }
 
   return unusedByLanguage;

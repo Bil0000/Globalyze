@@ -18,7 +18,7 @@ function buildOverrides(options: {
 export function registerDuplicatesCommand(program: Command): void {
   program
     .command("duplicates")
-    .description("Detect keys that share the same source text")
+    .description("Detect duplicate translation keys")
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .option("--source-dir <path>", "Override the configured source directory")
     .option("--locales-dir <path>", "Override the configured locales directory")

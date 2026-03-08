@@ -39,7 +39,7 @@ function parseModule(source: string) {
 export function registerRenameCommand(program: Command): void {
   program
     .command("rename <oldKey> <newKey>")
-    .description("Rename a translation key across source, locales, and graph")
+    .description("Rename a translation key across the project")
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .option("--source-dir <path>", "Override the configured source directory")
     .option("--locales-dir <path>", "Override the configured locales directory")

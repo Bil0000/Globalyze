@@ -24,10 +24,24 @@ function buildOverrides(options: {
 export function registerWatchCommand(program: Command): void {
   program
     .command("watch")
-    .description("Watch the project and update locales when new strings appear")
+    .description("Run Globalyze in development watch mode")
+    .summary("Watch for source changes and sync translations")
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .option("--source-dir <path>", "Override the configured source directory")
     .option("--locales-dir <path>", "Override the configured locales directory")
+    .addHelpText(
+      "after",
+      [
+        "",
+        "Actions performed:",
+        "- watch source files",
+        "- detect new or removed UI strings",
+        "- update locale files",
+        "- translate new keys",
+        "- refresh translation graph data",
+        ""
+      ].join("\n")
+    )
     .action(
       async (options: {
         config?: string;

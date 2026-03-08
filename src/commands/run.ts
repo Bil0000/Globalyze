@@ -28,6 +28,7 @@ export async function executeRunCommand(
     localesDir?: string;
   } = {}
 ) {
-  logger.warn('`globalyze run` is deprecated. Use `globalyze sync` instead.');
+  logger.warn("Warning: `globalyze run` is deprecated.");
+  logger.info("Use `globalyze sync` instead.");
   return executeSyncCommand(options);
 }

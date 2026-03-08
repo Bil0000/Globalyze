@@ -104,7 +104,8 @@ export async function executeReportCommand(
 export function registerReportCommand(program: Command): void {
   program
     .command("report")
-    .description("Generate a translation coverage report")
+    .description("Show localization statistics")
+    .summary("Inspect translation coverage and missing keys")
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .option("--source-dir <path>", "Override the configured source directory")
     .option("--locales-dir <path>", "Override the configured locales directory")

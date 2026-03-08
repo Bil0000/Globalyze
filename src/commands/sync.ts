@@ -103,10 +103,25 @@ function logGovernanceReview(
 export function registerSyncCommand(program: Command): void {
   program
     .command("sync")
-    .description("Maintain an already-globalized project")
+    .description("Synchronize translations with the codebase")
+    .summary("Update translations and locale files")
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .option("--source-dir <path>", "Override the configured source directory")
     .option("--locales-dir <path>", "Override the configured locales directory")
+    .addHelpText(
+      "after",
+      [
+        "",
+        "Actions performed:",
+        "- scan source files",
+        "- extract new UI strings",
+        "- update locale files",
+        "- translate new keys",
+        "- update translation graph",
+        "- run governance validation",
+        ""
+      ].join("\n")
+    )
     .action(
       async (options: {
         config?: string;
@@ -217,7 +232,16 @@ export async function executeSyncCommand(
   if (scaffoldedRuntime) {
     logger.info(`Created ${scaffoldedRuntime} for ${config.translationImportPath}.`);
   }
-  logger.info(`Sync complete: ${String(updatedFiles.length)} files updated`);
+  logger.newline();
+  logger.heading("Globalyze Sync Complete");
+  logger.info(`Updated Files: ${String(updatedFiles.length)}`);
+  logger.info(`Source Keys: ${String(localeSync.sourceKeyCount)}`);
+  logger.info(
+    `Locale Files Updated: ${localeSync.created.length > 0 || localeSync.updated.length > 0 ? "yes" : "no"}`
+  );
+  logger.info(
+    `Governance Checks: ${config.governance.enabled ? "enabled" : "disabled"}`
+  );
 
   return {
     transformedFiles,

@@ -26,10 +26,38 @@ export function buildProgram(version: string): Command {
 
   program
     .name("globalyze")
-    .description(
-      "Automatically internationalize React and Next.js applications."
-    )
+    .usage("<command>")
+    .description("Globalyze CLI")
+    .summary("Automatically internationalize React applications.")
     .version(version);
+
+  program.addHelpText(
+    "after",
+    [
+      "",
+      "Primary Commands:",
+      "  globalize      Convert a project to use internationalization",
+      "  sync           Update translations and locale files",
+      "  watch          Run Globalyze in development watch mode",
+      "  report         Show localization statistics",
+      "  clean          Remove unused translations",
+      "",
+      "Maintenance:",
+      "  duplicates     Detect duplicate translation keys",
+      "  rename         Rename a translation key across the project",
+      "  dynamic-remove Revert dynamic extraction transforms",
+      "  change-style   Change locale file structure style",
+      "",
+      "Governance:",
+      "  owner          Assign translation ownership",
+      "  lock           Lock a translation key",
+      "  unlock         Unlock a translation key",
+      "",
+      "Legacy:",
+      "  run            Deprecated alias for sync",
+      ""
+    ].join("\n")
+  );
 
   registerInitCommand(program);
   registerGlobalizeCommand(program);
