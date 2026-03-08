@@ -5,11 +5,14 @@ import { Command } from "commander";
 import { promptLocaleStructure } from "./init";
 import { extractTranslationKeyReferencesFromFiles } from "../extractor/translationKeyExtractor";
 import {
-  readLocaleDictionary,
-  syncLocaleFiles
+  readLocaleEntries,
+  writeLocaleEntries
 } from "../i18n/localeManager";
 import { scanProjectFiles } from "../scanner/projectScanner";
-import type { LocaleStructureConfig } from "../types";
+import type {
+  LocaleEntryDictionary,
+  LocaleStructureConfig
+} from "../types";
 import { createConfigContents, loadGlobalyzeConfig, writeTextFile } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
 
@@ -39,10 +42,24 @@ export async function executeChangeStyleCommand(
     () => loadGlobalyzeConfig(options.config),
     "Loaded configuration"
   );
-  const sourceLocale = await logger.step(
+  const localeEntriesByLanguage = await logger.step<
+    Record<string, LocaleEntryDictionary>
+  >(
     "Reading existing locale data",
-    () => readLocaleDictionary(config, config.sourceLocale),
-    (locale) => `Loaded ${String(Object.keys(locale).length)} source locale keys`
+    async () => {
+      const entries = await Promise.all(
+        config.languages.map(async (language) => {
+          const localeEntries = await readLocaleEntries(config, language);
+          return [language, localeEntries] as const;
+        })
+      );
+
+      return Object.fromEntries(entries) as Record<string, LocaleEntryDictionary>;
+    },
+    (entries) =>
+      `Loaded ${String(
+        Object.keys(entries[config.sourceLocale] ?? {}).length
+      )} source locale keys`
   );
   const nextLocaleStructure =
     options.localeStructure ?? (await promptLocaleStructure());
@@ -73,11 +90,37 @@ export async function executeChangeStyleCommand(
   );
   const localeSync = await logger.step(
     "Rewriting locale files",
-    () =>
-      syncLocaleFiles(nextConfig, sourceLocale, {
-        preserveExistingOnEmpty: false,
+    async () => {
+      const sourceEntries =
+        localeEntriesByLanguage[nextConfig.sourceLocale] ?? {};
+
+      await writeLocaleEntries(
+        nextConfig,
+        nextConfig.sourceLocale,
+        sourceEntries,
         sourceAssignments
-      }),
+      );
+
+      for (const language of nextConfig.languages) {
+        if (language === nextConfig.sourceLocale) {
+          continue;
+        }
+
+        await writeLocaleEntries(
+          nextConfig,
+          language,
+          localeEntriesByLanguage[language] ?? {},
+          sourceAssignments
+        );
+      }
+
+      return {
+        created: nextConfig.languages,
+        updated: nextConfig.languages,
+        removed: [],
+        sourceKeyCount: Object.keys(sourceEntries).length
+      };
+    },
     () => `Regenerated locale files in ${nextConfig.localesDir}`
   );
 

@@ -8,7 +8,8 @@ import { executeInitCommand } from "../src/commands/init";
 import {
   buildSourceLocale,
   readLocaleDictionary,
-  syncLocaleFiles
+  syncLocaleFiles,
+  writeLocaleEntries
 } from "../src/i18n/localeManager";
 import { scanProjectFiles } from "../src/scanner/projectScanner";
 import { extractTranslationKeyReferencesFromFiles } from "../src/extractor/translationKeyExtractor";
@@ -383,6 +384,7 @@ describe("locale file structures", () => {
       );
 
       await executeInitCommand({
+        langs: "en,fr",
         localeStructure: {
           format: "json",
           structure: "single",
@@ -396,6 +398,10 @@ describe("locale file structures", () => {
       await syncLocaleFiles(baseConfig, {
         "checkout.buy_button": "Buy now",
         "support.contact_button": "Contact support"
+      });
+      await writeLocaleEntries(baseConfig, "fr", {
+        "checkout.buy_button": { value: "Acheter maintenant" },
+        "support.contact_button": { value: "Contacter le support" }
       });
 
       const nextLocaleStructure: LocaleStructureConfig = {
@@ -418,10 +424,24 @@ describe("locale file structures", () => {
         path.join(rootDir, "locales", "en", "support.page.json"),
         "utf8"
       );
+      const checkoutFrenchLocale = await readFile(
+        path.join(rootDir, "locales", "fr", "checkout.page.json"),
+        "utf8"
+      );
+      const supportFrenchLocale = await readFile(
+        path.join(rootDir, "locales", "fr", "support.page.json"),
+        "utf8"
+      );
 
       expect(checkoutLocale).toContain('"checkout.buy_button": "Buy now"');
       expect(supportLocale).toContain(
         '"support.contact_button": "Contact support"'
+      );
+      expect(checkoutFrenchLocale).toContain(
+        '"checkout.buy_button": "Acheter maintenant"'
+      );
+      expect(supportFrenchLocale).toContain(
+        '"support.contact_button": "Contacter le support"'
       );
     } finally {
       process.chdir(originalCwd);

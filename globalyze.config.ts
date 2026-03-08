@@ -5,10 +5,10 @@ export default {
   ignore: ["node_modules", "dist", "build", ".next", ".git"],
   localeStructure: {
     format: "js",
-    structure: "single",
+    structure: "multiple",
     splitStrategy: "page",
-    commonFile: false,
-    naming: "dot",
+    commonFile: true,
+    naming: "camel",
   },
   cacheTranslations: true,
   dynamicExtraction: false,
