@@ -106,6 +106,20 @@ Run from source:
 bun run globalyze --help
 ```
 
+Install the AI skill from this repo:
+
+```bash
+npx skills add Bil0000/Globalyze --skill globalyze
+```
+
+If your installer expects a repo path instead of a skill name:
+
+```bash
+npx skills add Bil0000/Globalyze --path skills/globalyze
+```
+
+The skill lives at [skills/globalyze/SKILL.md](/Users/bilal/Documents/globalyze/skills/globalyze/SKILL.md) and is designed for agent tools such as Cursor, Codex, or Claude-style workflows that should drive the `globalyze` CLI for a target project.
+
 Make the CLI available globally from your local checkout:
 
 ```bash
