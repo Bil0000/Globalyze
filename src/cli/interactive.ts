@@ -17,6 +17,7 @@ import { executeTranslateCommand } from "../commands/translate";
 import { executePreviewCommand } from "../commands/preview";
 import { executeWatchCommand } from "../commands/watch";
 import { executeAddLanguagesCommand } from "../commands/languages";
+import { executeChangeStyleCommand } from "../commands/changeStyle";
 
 export async function launchInteractiveCLI(): Promise<void> {
   intro("🌍 Globalyze — Automatic App Localization");
@@ -26,6 +27,7 @@ export async function launchInteractiveCLI(): Promise<void> {
     options: [
       { label: "Scan project for strings", value: "scan" },
       { label: "Add languages to config", value: "languages" },
+      { label: "Change locale file style", value: "style" },
       { label: "Preview transformations", value: "preview" },
       { label: "Transform source code", value: "transform" },
       { label: "Generate translations", value: "translate" },
@@ -62,6 +64,10 @@ export async function launchInteractiveCLI(): Promise<void> {
     }
 
     await executeAddLanguagesCommand(codes.split(","));
+  }
+
+  if (action === "style") {
+    await executeChangeStyleCommand();
   }
 
   if (action === "transform") {

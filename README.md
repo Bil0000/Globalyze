@@ -50,7 +50,7 @@ Generated locale entry:
 - Falls back to deterministic slug-based keys when AI is unavailable
 - Rewrites source files with Babel AST transforms
 - Injects the configured translation import automatically
-- Creates and synchronizes locale JSON files
+- Creates and synchronizes locale files in configurable JSON or JavaScript layouts
 - Translates target locales with Lingo.dev
 - Falls back to English values when translation credentials or network access are unavailable
 - Checks translation coverage and reports missing keys
@@ -228,6 +228,20 @@ Options:
 
 - `-c, --config <path>`
 
+### `globalyze style`
+
+Changes the locale storage format and layout without regenerating translation keys.
+
+Use this when you want to move between:
+
+- single-file and multi-file locale layouts
+- JSON and JavaScript locale files
+- page-based and component-based multi-file splits
+
+Options:
+
+- `-c, --config <path>`
+
 ### `globalyze scan`
 
 Scans the configured source tree and prints detected hardcoded UI strings.
@@ -313,7 +327,7 @@ Options:
 
 Note:
 
-- `watch` updates locale files but does not automatically perform a separate translation pass for new keys; run `globalyze translate` or `globalyze run` if you want target locale values refreshed immediately
+- `watch` updates source files, syncs locale files, translates new keys into target locales, and removes deleted keys from locale outputs
 
 ### `globalyze run`
 
@@ -344,6 +358,13 @@ export default {
   localesDir: "locales",
   languages: ["en", "ar", "fr", "de"],
   ignore: ["node_modules", "dist", "build", ".next", ".git"],
+  localeStructure: {
+    format: "json",
+    structure: "single",
+    splitStrategy: "page",
+    commonFile: false,
+    naming: "dot"
+  },
   translationInstructions: [
     "This is a Next.js commerce application.",
     "Use natural commerce wording for pricing, checkout, orders, and purchase actions.",
@@ -361,9 +382,10 @@ export default {
 ### Config fields
 
 - `sourceDir`: source directory to scan
-- `localesDir`: directory where locale JSON files are stored
+- `localesDir`: directory where per-language locale folders are stored
 - `languages`: supported locales
 - `ignore`: ignored directories
+- `localeStructure`: file format, layout, and multi-file naming convention for locale output
 - `translationInstructions`: editable translation context inferred during `globalyze init` and forwarded to Lingo as per-key hints
 - `sourceLocale`: canonical source locale, default `en`
 - `openAiModel`: OpenAI model for key generation
@@ -404,6 +426,8 @@ Running `globalyze` with no arguments opens a prompt-driven menu powered by `@cl
 Available actions:
 
 - Scan project for strings
+- Add languages to config
+- Change locale file style
 - Preview transformations
 - Transform source code
 - Generate translations
@@ -457,6 +481,88 @@ The checked-in root config points to that demo:
 
 That means you can try the tool immediately from the repository root.
 
+## Locale File Structures
+
+Globalyze always organizes locale output by language folder:
+
+```text
+locales/
+  en/
+  fr/
+  ar/
+```
+
+### Single JSON
+
+```text
+locales/
+  en/en.json
+  fr/fr.json
+  ar/ar.json
+```
+
+### Multiple JSON
+
+Page-based:
+
+```text
+locales/
+  en/
+    checkout.page.json
+    payments.page.json
+    common.json
+```
+
+Supported multi-file naming conventions:
+
+- `dot`: `pricing.page.js`
+- `camel`: `pricingPage.js`
+- `snake`: `pricing_page.js`
+- `kebab`: `pricing-page.js`
+
+Component-based:
+
+```text
+locales/
+  en/
+    header.component.json
+    cart.component.json
+    common.json
+```
+
+### Single JavaScript
+
+```text
+locales/
+  en/en.js
+  fr/fr.js
+```
+
+JavaScript locale files export typed constants:
+
+```ts
+export const en = {
+  "checkout.buy_button": "Buy now"
+} as const;
+```
+
+### Multiple JavaScript
+
+```text
+locales/
+  en/
+    checkout.page.js
+    common.js
+```
+
+### Common Files
+
+When `localeStructure.structure` is `multiple` and `commonFile` is `true`, Globalyze moves repeated values shared across pages or components into `common.json` or `common.js`.
+
+### Changing Style Later
+
+Use `globalyze style` to migrate locale files after initialization. This command preserves existing keys and translations, then rewrites the locale output using the newly selected layout.
+
 ## Architecture Overview
 
 Globalyze is organized as a small set of focused modules:
@@ -470,7 +576,7 @@ Globalyze is organized as a small set of focused modules:
 - `src/transformer`
   Rewrites JSX AST nodes and injects the translation import
 - `src/i18n`
-  Builds, merges, syncs, and validates locale dictionaries
+  Builds, merges, syncs, validates, and rewrites locale dictionaries through pluggable writers
 - `src/lingo`
   Handles translation via Lingo.dev with safe English fallback behavior
 - `src/report`

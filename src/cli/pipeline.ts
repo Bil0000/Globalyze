@@ -80,7 +80,7 @@ export async function prepareTransformProject(
     Object.keys(existingSourceLocale).length === 0
   ) {
     throw new GlobalyzeError(
-      `The project appears to be already transformed, but ${config.sourceLocale}.json is empty in ${config.localesDir}. Globalyze cannot rebuild source strings from translation keys alone. Restore the source locale file from git, or rerun Globalyze on an untransformed source tree.`
+      `The project appears to be already transformed, but the source locale output for ${config.sourceLocale} is empty in ${config.localesDir}. Globalyze cannot rebuild source strings from translation keys alone. Restore the source locale files from git, or rerun Globalyze on an untransformed source tree.`
     );
   }
 
@@ -117,7 +117,10 @@ export async function transformProject(
   );
   const localeSync = await syncLocaleFiles(
     config,
-    buildSourceLocale(prepared.keyAssignments)
+    buildSourceLocale(prepared.keyAssignments),
+    {
+      sourceAssignments: prepared.keyAssignments
+    }
   );
 
   return {

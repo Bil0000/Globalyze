@@ -1,4 +1,16 @@
 export type SupportedFileExtension = ".ts" | ".tsx" | ".js" | ".jsx";
+export type LocaleFileFormat = "json" | "js";
+export type LocaleFileStructure = "single" | "multiple";
+export type LocaleSplitStrategy = "page" | "component";
+export type LocaleFileNaming = "dot" | "camel" | "snake" | "kebab";
+
+export interface LocaleStructureConfig {
+  format: LocaleFileFormat;
+  structure: LocaleFileStructure;
+  splitStrategy: LocaleSplitStrategy;
+  commonFile: boolean;
+  naming: LocaleFileNaming;
+}
 
 export type ExtractedStringKind =
   | "jsx-text"
@@ -10,6 +22,7 @@ export interface GlobalyzeConfig {
   localesDir: string;
   languages: string[];
   ignore?: string[];
+  localeStructure?: Partial<LocaleStructureConfig>;
   translationInstructions?: string[];
   sourceLocale?: string;
   openAiModel?: string;
@@ -26,6 +39,7 @@ export interface ResolvedGlobalyzeConfig {
   localesDir: string;
   languages: string[];
   ignore: string[];
+  localeStructure: LocaleStructureConfig;
   translationInstructions: string[];
   sourceLocale: string;
   openAiModel: string;
@@ -54,6 +68,11 @@ export interface KeyAssignment extends KeyGenerationCandidate {
   key: string;
 }
 
+export interface LocaleKeyReference {
+  key: string;
+  file: string;
+}
+
 export interface KeyGenerationResult {
   keysByText: Map<string, string>;
   usedFallback: boolean;
@@ -73,6 +92,11 @@ export interface ScanResult {
 }
 
 export type LocaleDictionary = Record<string, string>;
+
+export interface LocaleFileContent {
+  fileName: string;
+  entries: LocaleDictionary;
+}
 
 export interface LocaleSyncResult {
   created: string[];

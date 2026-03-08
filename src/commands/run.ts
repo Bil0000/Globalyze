@@ -71,7 +71,10 @@ export async function executeRunCommand(
   );
   const localeSync = await logger.step(
     "Syncing locale files",
-    () => syncLocaleFiles(config, buildSourceLocale(prepared.keyAssignments)),
+    () =>
+      syncLocaleFiles(config, buildSourceLocale(prepared.keyAssignments), {
+        sourceAssignments: prepared.keyAssignments
+      }),
     () => `Updated locale files in ${config.localesDir}`
   );
   let translation: TranslationResult = {

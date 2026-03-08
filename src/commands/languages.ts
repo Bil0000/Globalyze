@@ -98,7 +98,12 @@ export async function executeAddLanguagesCommand(
         nextConfig,
         prepared.rawStrings.length > 0
           ? buildSourceLocale(prepared.keyAssignments)
-          : {}
+          : {},
+        {
+          ...(prepared.rawStrings.length > 0
+            ? { sourceAssignments: prepared.keyAssignments }
+            : {})
+        }
       ),
     () =>
       prepared.rawStrings.length > 0

@@ -1,20 +1,18 @@
 import path from "node:path";
 
-import fs from "fs-extra";
-
 import type {
   KeyAssignment,
   LocaleDictionary,
+  LocaleKeyReference,
   LocaleSyncResult,
   MissingTranslationReport,
   ResolvedGlobalyzeConfig
 } from "../types";
 import {
-  pathExists,
-  readJsonFile,
-  writeJsonFile
+  pathExists
 } from "../utils/fileUtils";
 import { GlobalyzeError } from "../utils/errors";
+import { createLocaleWriter } from "./writers";
 
 export function buildSourceLocale(
   assignments: readonly KeyAssignment[]
@@ -32,7 +30,11 @@ export function getLocaleFilePath(
   config: ResolvedGlobalyzeConfig,
   language: string
 ): string {
-  return path.join(config.localesDir, `${language}.json`);
+  return path.join(
+    config.localesDir,
+    language,
+    `${language}.${config.localeStructure.format}`
+  );
 }
 
 export async function syncLocaleFiles(
@@ -40,8 +42,10 @@ export async function syncLocaleFiles(
   sourceLocale: LocaleDictionary,
   options: {
     preserveExistingOnEmpty?: boolean;
+    sourceAssignments?: readonly LocaleKeyReference[];
   } = {}
 ): Promise<LocaleSyncResult> {
+  const writer = createLocaleWriter(config);
   const preserveExistingOnEmpty = options.preserveExistingOnEmpty ?? true;
   const effectiveSourceLocale =
     Object.keys(sourceLocale).length > 0 || !preserveExistingOnEmpty
@@ -49,30 +53,12 @@ export async function syncLocaleFiles(
       : await readLocaleDictionary(config, config.sourceLocale);
   const created: string[] = [];
   const updated: string[] = [];
-  const removed: string[] = [];
-
-  if (await pathExists(config.localesDir)) {
-    const existingLocaleFiles = (await fs.readdir(config.localesDir))
-      .filter((fileName) => fileName.endsWith(".json"))
-      .map((fileName) => ({
-        fileName,
-        language: fileName.replace(/\.json$/, "")
-      }));
-
-    for (const localeFile of existingLocaleFiles) {
-      if (config.languages.includes(localeFile.language)) {
-        continue;
-      }
-
-      await fs.remove(path.join(config.localesDir, localeFile.fileName));
-      removed.push(localeFile.language);
-    }
-  }
+  const removed = await writer.removeStaleLanguages(config, config.languages);
 
   for (const language of config.languages) {
-    const localePath = getLocaleFilePath(config, language);
+    const localePath = path.join(config.localesDir, language);
     const existed = await pathExists(localePath);
-    const current = (await readJsonFile(localePath)) ?? {};
+    const current = await readLocaleDictionary(config, language);
     const nextLocale: LocaleDictionary = {};
 
     for (const [key, englishValue] of Object.entries(effectiveSourceLocale)) {
@@ -84,7 +70,13 @@ export async function syncLocaleFiles(
       nextLocale[key] = current[key] ?? "";
     }
 
-    await writeJsonFile(localePath, nextLocale);
+    await writer.writeLanguage(
+      config,
+      language,
+      nextLocale,
+      effectiveSourceLocale,
+      options.sourceAssignments
+    );
 
     if (existed) {
       updated.push(language);
@@ -105,7 +97,7 @@ export async function readLocaleDictionary(
   config: ResolvedGlobalyzeConfig,
   language: string
 ): Promise<LocaleDictionary> {
-  return (await readJsonFile(getLocaleFilePath(config, language))) ?? {};
+  return createLocaleWriter(config).readLanguage(config, language);
 }
 
 export async function writeLocaleDictionary(
@@ -113,7 +105,16 @@ export async function writeLocaleDictionary(
   language: string,
   locale: LocaleDictionary
 ): Promise<void> {
-  await writeJsonFile(getLocaleFilePath(config, language), locale);
+  const sourceLocale =
+    language === config.sourceLocale
+      ? locale
+      : await readLocaleDictionary(config, config.sourceLocale);
+  await createLocaleWriter(config).writeLanguage(
+    config,
+    language,
+    locale,
+    sourceLocale
+  );
 }
 
 export async function mergeSourceLocaleDictionary(
@@ -153,11 +154,15 @@ export async function ensureLocaleCoverageReady(
     );
   }
 
+  const sourceLocaleDirectory = path.join(config.localesDir, config.sourceLocale);
   const sourceLocalePath = getLocaleFilePath(config, config.sourceLocale);
 
-  if (!(await pathExists(sourceLocalePath))) {
+  if (
+    !(await pathExists(sourceLocaleDirectory)) &&
+    !(await pathExists(sourceLocalePath))
+  ) {
     throw new GlobalyzeError(
-      `Source locale file does not exist: ${sourceLocalePath}. Run "globalyze transform" or "globalyze run" first.`
+      `Source locale output does not exist for ${config.sourceLocale} in ${config.localesDir}. Run "globalyze transform" or "globalyze run" first.`
     );
   }
 
@@ -165,7 +170,7 @@ export async function ensureLocaleCoverageReady(
 
   if (Object.keys(sourceLocale).length === 0) {
     throw new GlobalyzeError(
-      `Source locale file is empty: ${sourceLocalePath}. Run "globalyze transform" or "globalyze run" first.`
+      `Source locale output for ${config.sourceLocale} is empty in ${config.localesDir}. Run "globalyze transform" or "globalyze run" first.`
     );
   }
 }

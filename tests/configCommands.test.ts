@@ -41,6 +41,10 @@ describe("config commands", () => {
     expect(contents).toContain(
       'ignore: ["node_modules", "dist", "build", ".next", ".git"],'
     );
+    expect(contents).toContain("localeStructure:");
+    expect(contents).toContain('format: "json"');
+    expect(contents).toContain('structure: "single"');
+    expect(contents).toContain('naming: "dot"');
     expect(contents).toContain("translationInstructions:");
     expect(contents).toContain('sourceLocale: "en"');
     expect(contents).toContain('openAiModel: "gpt-4o-mini"');
@@ -98,8 +102,9 @@ describe("config commands", () => {
     );
     await executeInitCommand();
     await mkdir(path.join(rootDir, "locales"), { recursive: true });
+    await mkdir(path.join(rootDir, "locales", "en"), { recursive: true });
     await writeFile(
-      path.join(rootDir, "locales", "en.json"),
+      path.join(rootDir, "locales", "en", "en.json"),
       '{\n  "checkout.buy_button": "Buy now"\n}\n',
       "utf8"
     );
@@ -111,7 +116,7 @@ describe("config commands", () => {
       "utf8"
     );
     const turkishLocale = await readFile(
-      path.join(rootDir, "locales", "tr.json"),
+      path.join(rootDir, "locales", "tr", "tr.json"),
       "utf8"
     );
 
@@ -146,11 +151,11 @@ describe("config commands", () => {
       "utf8"
     );
     const englishLocale = await readFile(
-      path.join(rootDir, "locales", "en.json"),
+      path.join(rootDir, "locales", "en", "en.json"),
       "utf8"
     );
     const turkishLocale = await readFile(
-      path.join(rootDir, "locales", "tr.json"),
+      path.join(rootDir, "locales", "tr", "tr.json"),
       "utf8"
     );
 

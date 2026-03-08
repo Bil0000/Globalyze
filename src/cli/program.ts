@@ -1,5 +1,6 @@
 import { Command } from "commander";
 
+import { registerChangeStyleCommand } from "../commands/changeStyle";
 import { registerInitCommand } from "../commands/init";
 import { registerLanguagesCommand } from "../commands/languages";
 import { registerPreviewCommand } from "../commands/preview";
@@ -23,6 +24,7 @@ export function buildProgram(version: string): Command {
     .version(version);
 
   registerInitCommand(program);
+  registerChangeStyleCommand(program);
   registerLanguagesCommand(program);
   registerPreviewCommand(program);
   registerScanCommand(program);

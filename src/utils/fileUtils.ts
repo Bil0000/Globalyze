@@ -6,6 +6,7 @@ import fs from "fs-extra";
 
 import type {
   GlobalyzeConfig,
+  LocaleStructureConfig,
   LocaleDictionary,
   ResolvedGlobalyzeConfig,
   SupportedFileExtension
@@ -27,10 +28,19 @@ export const DEFAULT_IGNORE = [
   ".git"
 ];
 
+export const DEFAULT_LOCALE_STRUCTURE: LocaleStructureConfig = {
+  format: "json",
+  structure: "single",
+  splitStrategy: "page",
+  commonFile: false,
+  naming: "dot"
+};
+
 const DEFAULT_CONFIG: Omit<ResolvedGlobalyzeConfig, "rootDir" | "sourceDir" | "localesDir"> =
   {
     languages: ["en", "ar", "fr", "de"],
     ignore: DEFAULT_IGNORE,
+    localeStructure: DEFAULT_LOCALE_STRUCTURE,
     translationInstructions: [
       "This is a React application with user-facing UI text.",
       "Keep labels, actions, and short UI text concise and natural for the target locale.",
@@ -65,6 +75,18 @@ function formatInstructionArray(values: readonly string[]): string {
   ].join("\n");
 }
 
+function formatLocaleStructure(value: LocaleStructureConfig): string {
+  return [
+    "{",
+    `    format: ${quoteString(value.format)},`,
+    `    structure: ${quoteString(value.structure)},`,
+    `    splitStrategy: ${quoteString(value.splitStrategy)},`,
+    `    commonFile: ${value.commonFile ? "true" : "false"},`,
+    `    naming: ${quoteString(value.naming)},`,
+    "  }"
+  ].join("\n");
+}
+
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -93,6 +115,39 @@ function normalizeStringList(input: unknown, fallback: readonly string[]): strin
     .filter(Boolean);
 
   return values.length > 0 ? [...values] : [...fallback];
+}
+
+function isLocaleStructureConfig(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function normalizeLocaleStructure(input: unknown): LocaleStructureConfig {
+  if (!isLocaleStructureConfig(input)) {
+    return { ...DEFAULT_LOCALE_STRUCTURE };
+  }
+
+  const format = input.format === "js" ? "js" : "json";
+  const structure = input.structure === "multiple" ? "multiple" : "single";
+  const splitStrategy =
+    input.splitStrategy === "component" ? "component" : "page";
+  const commonFile =
+    structure === "multiple" ? input.commonFile !== false : false;
+  const naming =
+    input.naming === "camel"
+      ? "camel"
+      : input.naming === "snake"
+        ? "snake"
+        : input.naming === "kebab"
+          ? "kebab"
+          : "dot";
+
+  return {
+    format,
+    structure,
+    splitStrategy,
+    commonFile,
+    naming
+  };
 }
 
 function resolveOptionalString(input: unknown, fallback: string): string {
@@ -143,6 +198,72 @@ function assertOptionalPositiveNumber(
   ) {
     throw new GlobalyzeError(
       `Config at ${configPath} has an invalid "${fieldName}" value. Expected a positive number.`
+    );
+  }
+}
+
+function assertOptionalLocaleStructure(
+  value: unknown,
+  configPath: string
+): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!isLocaleStructureConfig(value)) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "localeStructure" value. Expected an object.`
+    );
+  }
+
+  if (
+    value.format !== undefined &&
+    value.format !== "json" &&
+    value.format !== "js"
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "localeStructure.format" value. Expected "json" or "js".`
+    );
+  }
+
+  if (
+    value.structure !== undefined &&
+    value.structure !== "single" &&
+    value.structure !== "multiple"
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "localeStructure.structure" value. Expected "single" or "multiple".`
+    );
+  }
+
+  if (
+    value.splitStrategy !== undefined &&
+    value.splitStrategy !== "page" &&
+    value.splitStrategy !== "component"
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "localeStructure.splitStrategy" value. Expected "page" or "component".`
+    );
+  }
+
+  if (
+    value.commonFile !== undefined &&
+    typeof value.commonFile !== "boolean"
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "localeStructure.commonFile" value. Expected a boolean.`
+    );
+  }
+
+  if (
+    value.naming !== undefined &&
+    value.naming !== "dot" &&
+    value.naming !== "camel" &&
+    value.naming !== "snake" &&
+    value.naming !== "kebab"
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "localeStructure.naming" value. Expected "dot", "camel", "snake", or "kebab".`
     );
   }
 }
@@ -236,7 +357,8 @@ export function normalizeLanguageCodes(
 
 export function createDefaultConfigContents(
   languages: readonly string[] = DEFAULT_CONFIG.languages,
-  translationInstructions: readonly string[] = DEFAULT_CONFIG.translationInstructions
+  translationInstructions: readonly string[] = DEFAULT_CONFIG.translationInstructions,
+  localeStructure: LocaleStructureConfig = DEFAULT_CONFIG.localeStructure
 ): string {
   return [
     "export default {",
@@ -244,6 +366,7 @@ export function createDefaultConfigContents(
     '  localesDir: "locales",',
     `  languages: ${formatStringArray(languages)},`,
     `  ignore: ${formatStringArray(DEFAULT_IGNORE)},`,
+    `  localeStructure: ${formatLocaleStructure(localeStructure)},`,
     `  translationInstructions: ${formatInstructionArray(translationInstructions)},`,
     `  sourceLocale: ${quoteString(DEFAULT_CONFIG.sourceLocale)},`,
     `  openAiModel: ${quoteString(DEFAULT_CONFIG.openAiModel)},`,
@@ -264,6 +387,7 @@ export function createConfigContents(
     | "localesDir"
     | "languages"
     | "ignore"
+    | "localeStructure"
     | "translationInstructions"
     | "sourceLocale"
     | "openAiModel"
@@ -282,6 +406,7 @@ export function createConfigContents(
     `  localesDir: ${quoteString(relativeLocalesDir)},`,
     `  languages: ${formatStringArray(config.languages)},`,
     `  ignore: ${formatStringArray(config.ignore)},`,
+    `  localeStructure: ${formatLocaleStructure(config.localeStructure)},`,
     `  translationInstructions: ${formatInstructionArray(config.translationInstructions)},`,
     `  sourceLocale: ${quoteString(config.sourceLocale)},`,
     `  openAiModel: ${quoteString(config.openAiModel)},`,
@@ -382,6 +507,10 @@ export async function loadGlobalyzeConfig(
   assertOptionalString("localesDir", mergedConfig.localesDir, resolvedConfigPath);
   assertOptionalStringArray("languages", mergedConfig.languages, resolvedConfigPath);
   assertOptionalStringArray("ignore", mergedConfig.ignore, resolvedConfigPath);
+  assertOptionalLocaleStructure(
+    mergedConfig.localeStructure,
+    resolvedConfigPath
+  );
   assertOptionalStringArray(
     "translationInstructions",
     mergedConfig.translationInstructions,
@@ -437,6 +566,7 @@ export async function loadGlobalyzeConfig(
       DEFAULT_CONFIG.languages
     ),
     ignore: normalizeLanguageList(mergedConfig.ignore, DEFAULT_CONFIG.ignore),
+    localeStructure: normalizeLocaleStructure(mergedConfig.localeStructure),
     translationInstructions: normalizeStringList(
       mergedConfig.translationInstructions,
       DEFAULT_CONFIG.translationInstructions

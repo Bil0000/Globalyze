@@ -71,7 +71,10 @@ export async function executeTransformCommand(
   );
   const localeSync = await logger.step(
     "Syncing locale files",
-    () => syncLocaleFiles(config, buildSourceLocale(prepared.keyAssignments)),
+    () =>
+      syncLocaleFiles(config, buildSourceLocale(prepared.keyAssignments), {
+        sourceAssignments: prepared.keyAssignments
+      }),
     () => `Updated locale files in ${config.localesDir}`
   );
   const updatedFiles = transformedFiles.filter((item) => item.updated);

@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import type { ResolvedGlobalyzeConfig } from "../src/types";
+import { DEFAULT_LOCALE_STRUCTURE } from "../src/utils/fileUtils";
 
 export function createTestConfig(
   rootDir: string,
@@ -12,6 +13,7 @@ export function createTestConfig(
     localesDir: path.join(rootDir, "locales"),
     languages: ["en", "fr", "de", "ar"],
     ignore: ["node_modules", "dist", "build", ".next", ".git"],
+    localeStructure: DEFAULT_LOCALE_STRUCTURE,
     translationInstructions: [
       "This is a React application with user-facing UI text.",
       "Keep labels, actions, and short UI text concise and natural for the target locale.",

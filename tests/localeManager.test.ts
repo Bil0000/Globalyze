@@ -191,7 +191,7 @@ describe("localeManager", () => {
 
     expect(prepareTransformProject(config)).rejects.toThrow(
       new GlobalyzeError(
-        `The project appears to be already transformed, but en.json is empty in ${config.localesDir}. Globalyze cannot rebuild source strings from translation keys alone. Restore the source locale file from git, or rerun Globalyze on an untransformed source tree.`
+        `The project appears to be already transformed, but the source locale output for en is empty in ${config.localesDir}. Globalyze cannot rebuild source strings from translation keys alone. Restore the source locale files from git, or rerun Globalyze on an untransformed source tree.`
       )
     );
   });
