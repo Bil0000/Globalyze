@@ -12,6 +12,7 @@ export default {
   },
   cacheTranslations: true,
   dynamicExtraction: false,
+  i18nAdapter: "generic",
   translationInstructions: [
     "This is a Next.js marketing application.",
     "Keep marketing copy and CTA labels short, natural, and persuasive.",
@@ -23,4 +24,9 @@ export default {
   aiBatchSize: 20,
   translationImportPath: "@/i18n",
   translationFunctionName: "t",
+  governance: {
+    enabled: false,
+    failOnLockedChange: true,
+    failOnApprovalRequiredChange: false,
+  },
 };

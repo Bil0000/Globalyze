@@ -8,10 +8,10 @@ import {
 } from "@clack/prompts";
 
 import { executeReportCommand } from "../commands/report";
-import { executeRunCommand } from "../commands/run";
 import { executeScanCommand } from "../commands/scan";
 import { executeScoreCommand } from "../commands/score";
 import { executeScreenshotCommand } from "../commands/screenshot";
+import { executeSyncCommand } from "../commands/sync";
 import { executeTransformCommand } from "../commands/transform";
 import { executeTranslateCommand } from "../commands/translate";
 import { executePreviewCommand } from "../commands/preview";
@@ -21,6 +21,9 @@ import { executeChangeStyleCommand } from "../commands/changeStyle";
 import { executeCleanCommand } from "../commands/clean";
 import { executeDuplicatesCommand } from "../commands/duplicates";
 import { executeDynamicRemoveCommand } from "../commands/dynamicRemove";
+import { executeGlobalizeCommand } from "../commands/globalize";
+import { executeLockCommand, executeUnlockCommand } from "../commands/lock";
+import { executeOwnerCommand } from "../commands/owner";
 
 export async function launchInteractiveCLI(): Promise<void> {
   intro("🌍 Globalyze — Automatic App Localization");
@@ -29,6 +32,8 @@ export async function launchInteractiveCLI(): Promise<void> {
     message: "Select an action",
     options: [
       { label: "Scan project for strings", value: "scan" },
+      { label: "Globalize project", value: "globalize" },
+      { label: "Sync translations", value: "sync" },
       { label: "Add languages to config", value: "languages" },
       { label: "Change locale file style", value: "style" },
       { label: "Remove dynamic translations", value: "dynamic-remove" },
@@ -37,9 +42,10 @@ export async function launchInteractiveCLI(): Promise<void> {
       { label: "Generate translations", value: "translate" },
       { label: "Show duplicate translations", value: "duplicates" },
       { label: "Clean unused locale keys", value: "clean" },
+      { label: "Assign translation owner", value: "owner" },
+      { label: "Lock or unlock a key", value: "locking" },
       { label: "Watch for new strings", value: "watch" },
       { label: "Analyze screenshot", value: "screenshot" },
-      { label: "Run full pipeline", value: "run" },
       { label: "Show translation report", value: "report" },
       { label: "Show project score", value: "score" },
       { label: "Exit", value: "exit" }
@@ -57,6 +63,14 @@ export async function launchInteractiveCLI(): Promise<void> {
 
   if (action === "scan") {
     await executeScanCommand();
+  }
+
+  if (action === "globalize") {
+    await executeGlobalizeCommand();
+  }
+
+  if (action === "sync") {
+    await executeSyncCommand();
   }
 
   if (action === "languages") {
@@ -96,6 +110,51 @@ export async function launchInteractiveCLI(): Promise<void> {
     await executeCleanCommand();
   }
 
+  if (action === "owner") {
+    const key = await text({
+      message: "Translation key"
+    });
+    const team = await text({
+      message: "Owner team"
+    });
+
+    if (
+      isCancel(key) ||
+      isCancel(team) ||
+      key.trim().length === 0 ||
+      team.trim().length === 0
+    ) {
+      cancel("Ownership update cancelled.");
+      return;
+    }
+
+    await executeOwnerCommand(key.trim(), team.trim());
+  }
+
+  if (action === "locking") {
+    const operation = await select({
+      message: "Choose a lock action",
+      options: [
+        { label: "Lock key", value: "lock" },
+        { label: "Unlock key", value: "unlock" }
+      ]
+    });
+    const key = await text({
+      message: "Translation key"
+    });
+
+    if (isCancel(operation) || isCancel(key) || key.trim().length === 0) {
+      cancel("Lock update cancelled.");
+      return;
+    }
+
+    if (operation === "lock") {
+      await executeLockCommand(key.trim());
+    } else {
+      await executeUnlockCommand(key.trim());
+    }
+  }
+
   if (action === "watch") {
     await executeWatchCommand();
   }
@@ -111,10 +170,6 @@ export async function launchInteractiveCLI(): Promise<void> {
     }
 
     await executeScreenshotCommand(imagePath);
-  }
-
-  if (action === "run") {
-    await executeRunCommand();
   }
 
   if (action === "report") {

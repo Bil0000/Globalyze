@@ -48,8 +48,8 @@ jobs:
       - name: Verify Globalyze install
         run: globalyze --help
 
-      - name: Auto-fix project
-        run: globalyze run
+      - name: Sync project translations
+        run: globalyze sync
 
       - name: Commit Globalyze updates
         run: |

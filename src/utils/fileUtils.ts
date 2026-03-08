@@ -5,11 +5,13 @@ import dotenv from "dotenv";
 import fs from "fs-extra";
 
 import type {
+  BuiltInI18nAdapter,
   GlobalyzeConfig,
   LocaleStructureConfig,
   LocaleDictionary,
   ResolvedGlobalyzeConfig,
-  SupportedFileExtension
+  SupportedFileExtension,
+  TranslationGovernanceConfig
 } from "../types";
 import { GlobalyzeError } from "./errors";
 
@@ -43,6 +45,7 @@ const DEFAULT_CONFIG: Omit<ResolvedGlobalyzeConfig, "rootDir" | "sourceDir" | "l
     localeStructure: DEFAULT_LOCALE_STRUCTURE,
     cacheTranslations: true,
     dynamicExtraction: false,
+    i18nAdapter: "generic",
     translationInstructions: [
       "This is a React application with user-facing UI text.",
       "Keep labels, actions, and short UI text concise and natural for the target locale.",
@@ -54,8 +57,56 @@ const DEFAULT_CONFIG: Omit<ResolvedGlobalyzeConfig, "rootDir" | "sourceDir" | "l
     aiBatchSize: 20,
     translationImportPath: "@/i18n",
     translationFunctionName: "t",
+    translationHookName: undefined,
+    providerImportPath: undefined,
+    providerComponentName: undefined,
+    governance: {
+      enabled: false,
+      failOnLockedChange: true,
+      failOnApprovalRequiredChange: false
+    },
     lingoApiUrl: undefined
   };
+
+function formatGovernance(value: TranslationGovernanceConfig): string {
+  return [
+    "{",
+    `    enabled: ${value.enabled ? "true" : "false"},`,
+    `    failOnLockedChange: ${value.failOnLockedChange ? "true" : "false"},`,
+    `    failOnApprovalRequiredChange: ${value.failOnApprovalRequiredChange ? "true" : "false"},`,
+    "  }"
+  ].join("\n");
+}
+
+function normalizeI18nAdapter(input: unknown): BuiltInI18nAdapter {
+  return input === "react-i18next" ||
+    input === "next-intl" ||
+    input === "react-intl" ||
+    input === "custom"
+    ? input
+    : "generic";
+}
+
+function normalizeGovernance(input: unknown): TranslationGovernanceConfig {
+  if (!isPlainObject(input)) {
+    return { ...DEFAULT_CONFIG.governance };
+  }
+
+  return {
+    enabled:
+      typeof input.enabled === "boolean"
+        ? input.enabled
+        : DEFAULT_CONFIG.governance.enabled,
+    failOnLockedChange:
+      typeof input.failOnLockedChange === "boolean"
+        ? input.failOnLockedChange
+        : DEFAULT_CONFIG.governance.failOnLockedChange,
+    failOnApprovalRequiredChange:
+      typeof input.failOnApprovalRequiredChange === "boolean"
+        ? input.failOnApprovalRequiredChange
+        : DEFAULT_CONFIG.governance.failOnApprovalRequiredChange
+  };
+}
 
 function quoteString(value: string): string {
   return JSON.stringify(value);
@@ -212,6 +263,57 @@ function assertOptionalBoolean(
   if (value !== undefined && typeof value !== "boolean") {
     throw new GlobalyzeError(
       `Config at ${configPath} has an invalid "${fieldName}" value. Expected a boolean.`
+    );
+  }
+}
+
+function assertOptionalGovernance(value: unknown, configPath: string): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!isPlainObject(value)) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "governance" value. Expected an object.`
+    );
+  }
+
+  if (value.enabled !== undefined && typeof value.enabled !== "boolean") {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "governance.enabled" value. Expected a boolean.`
+    );
+  }
+
+  if (
+    value.failOnLockedChange !== undefined &&
+    typeof value.failOnLockedChange !== "boolean"
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "governance.failOnLockedChange" value. Expected a boolean.`
+    );
+  }
+
+  if (
+    value.failOnApprovalRequiredChange !== undefined &&
+    typeof value.failOnApprovalRequiredChange !== "boolean"
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "governance.failOnApprovalRequiredChange" value. Expected a boolean.`
+    );
+  }
+}
+
+function assertOptionalAdapter(value: unknown, configPath: string): void {
+  if (
+    value !== undefined &&
+    value !== "generic" &&
+    value !== "react-i18next" &&
+    value !== "next-intl" &&
+    value !== "react-intl" &&
+    value !== "custom"
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "i18nAdapter" value. Expected "generic", "react-i18next", "next-intl", "react-intl", or "custom".`
     );
   }
 }
@@ -373,7 +475,9 @@ export function createDefaultConfigContents(
   languages: readonly string[] = DEFAULT_CONFIG.languages,
   translationInstructions: readonly string[] = DEFAULT_CONFIG.translationInstructions,
   localeStructure: LocaleStructureConfig = DEFAULT_CONFIG.localeStructure,
-  dynamicExtraction = DEFAULT_CONFIG.dynamicExtraction
+  dynamicExtraction = DEFAULT_CONFIG.dynamicExtraction,
+  i18nAdapter: BuiltInI18nAdapter = DEFAULT_CONFIG.i18nAdapter,
+  governance: TranslationGovernanceConfig = DEFAULT_CONFIG.governance
 ): string {
   return [
     "export default {",
@@ -384,6 +488,7 @@ export function createDefaultConfigContents(
     `  localeStructure: ${formatLocaleStructure(localeStructure)},`,
     `  cacheTranslations: ${DEFAULT_CONFIG.cacheTranslations ? "true" : "false"},`,
     `  dynamicExtraction: ${dynamicExtraction ? "true" : "false"},`,
+    `  i18nAdapter: ${quoteString(i18nAdapter)},`,
     `  translationInstructions: ${formatInstructionArray(translationInstructions)},`,
     `  sourceLocale: ${quoteString(DEFAULT_CONFIG.sourceLocale)},`,
     `  openAiModel: ${quoteString(DEFAULT_CONFIG.openAiModel)},`,
@@ -391,6 +496,7 @@ export function createDefaultConfigContents(
     `  aiBatchSize: ${String(DEFAULT_CONFIG.aiBatchSize)},`,
     `  translationImportPath: ${quoteString(DEFAULT_CONFIG.translationImportPath)},`,
     `  translationFunctionName: ${quoteString(DEFAULT_CONFIG.translationFunctionName)},`,
+    `  governance: ${formatGovernance(governance)},`,
     "};",
     ""
   ].join("\n");
@@ -407,6 +513,7 @@ export function createConfigContents(
     | "localeStructure"
     | "cacheTranslations"
     | "dynamicExtraction"
+    | "i18nAdapter"
     | "translationInstructions"
     | "sourceLocale"
     | "openAiModel"
@@ -414,6 +521,10 @@ export function createConfigContents(
     | "aiBatchSize"
     | "translationImportPath"
     | "translationFunctionName"
+    | "translationHookName"
+    | "providerImportPath"
+    | "providerComponentName"
+    | "governance"
     | "lingoApiUrl"
   >
 ): string {
@@ -428,6 +539,7 @@ export function createConfigContents(
     `  localeStructure: ${formatLocaleStructure(config.localeStructure)},`,
     `  cacheTranslations: ${config.cacheTranslations ? "true" : "false"},`,
     `  dynamicExtraction: ${config.dynamicExtraction ? "true" : "false"},`,
+    `  i18nAdapter: ${quoteString(config.i18nAdapter)},`,
     `  translationInstructions: ${formatInstructionArray(config.translationInstructions)},`,
     `  sourceLocale: ${quoteString(config.sourceLocale)},`,
     `  openAiModel: ${quoteString(config.openAiModel)},`,
@@ -435,6 +547,16 @@ export function createConfigContents(
     `  aiBatchSize: ${String(config.aiBatchSize)},`,
     `  translationImportPath: ${quoteString(config.translationImportPath)},`,
     `  translationFunctionName: ${quoteString(config.translationFunctionName)},`,
+    ...(config.translationHookName
+      ? [`  translationHookName: ${quoteString(config.translationHookName)},`]
+      : []),
+    ...(config.providerImportPath
+      ? [`  providerImportPath: ${quoteString(config.providerImportPath)},`]
+      : []),
+    ...(config.providerComponentName
+      ? [`  providerComponentName: ${quoteString(config.providerComponentName)},`]
+      : []),
+    `  governance: ${formatGovernance(config.governance)},`,
     ...(config.lingoApiUrl
       ? [`  lingoApiUrl: ${quoteString(config.lingoApiUrl)},`]
       : []),
@@ -542,6 +664,7 @@ export async function loadGlobalyzeConfig(
     mergedConfig.dynamicExtraction,
     resolvedConfigPath
   );
+  assertOptionalAdapter(mergedConfig.i18nAdapter, resolvedConfigPath);
   assertOptionalStringArray(
     "translationInstructions",
     mergedConfig.translationInstructions,
@@ -577,6 +700,22 @@ export async function loadGlobalyzeConfig(
     mergedConfig.translationFunctionName,
     resolvedConfigPath
   );
+  assertOptionalString(
+    "translationHookName",
+    mergedConfig.translationHookName,
+    resolvedConfigPath
+  );
+  assertOptionalString(
+    "providerImportPath",
+    mergedConfig.providerImportPath,
+    resolvedConfigPath
+  );
+  assertOptionalString(
+    "providerComponentName",
+    mergedConfig.providerComponentName,
+    resolvedConfigPath
+  );
+  assertOptionalGovernance(mergedConfig.governance, resolvedConfigPath);
   assertOptionalString("lingoApiUrl", mergedConfig.lingoApiUrl, resolvedConfigPath);
 
   const sourceDirInput = resolveOptionalString(
@@ -606,6 +745,7 @@ export async function loadGlobalyzeConfig(
       typeof mergedConfig.dynamicExtraction === "boolean"
         ? mergedConfig.dynamicExtraction
         : DEFAULT_CONFIG.dynamicExtraction,
+    i18nAdapter: normalizeI18nAdapter(mergedConfig.i18nAdapter),
     translationInstructions: normalizeStringList(
       mergedConfig.translationInstructions,
       DEFAULT_CONFIG.translationInstructions
@@ -635,6 +775,22 @@ export async function loadGlobalyzeConfig(
       mergedConfig.translationFunctionName,
       DEFAULT_CONFIG.translationFunctionName
     ),
+    translationHookName:
+      typeof mergedConfig.translationHookName === "string" &&
+      mergedConfig.translationHookName.trim().length > 0
+        ? mergedConfig.translationHookName.trim()
+        : undefined,
+    providerImportPath:
+      typeof mergedConfig.providerImportPath === "string" &&
+      mergedConfig.providerImportPath.trim().length > 0
+        ? mergedConfig.providerImportPath.trim()
+        : undefined,
+    providerComponentName:
+      typeof mergedConfig.providerComponentName === "string" &&
+      mergedConfig.providerComponentName.trim().length > 0
+        ? mergedConfig.providerComponentName.trim()
+        : undefined,
+    governance: normalizeGovernance(mergedConfig.governance),
     lingoApiUrl:
       typeof mergedConfig.lingoApiUrl === "string" &&
       mergedConfig.lingoApiUrl.trim().length > 0

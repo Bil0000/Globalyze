@@ -1,6 +1,6 @@
 # Globalyze
 
-Globalyze is a Bun-powered CLI that internationalizes React and Next.js apps by finding hardcoded UI strings, generating semantic translation keys, rewriting source code, creating locale files, and validating localization quality in CI.
+Globalyze is a Bun-powered, runtime-agnostic CLI that globalizes React and Next.js apps by finding hardcoded UI strings, generating semantic translation keys, rewriting source code, creating locale files, and validating localization quality in CI.
 
 ## Why Globalyze
 
@@ -24,7 +24,7 @@ Input:
 Run:
 
 ```bash
-globalyze run
+globalyze globalize
 ```
 
 Output:
@@ -51,12 +51,15 @@ Generated locale entry:
 - Reuses similar existing keys for small copy changes
 - Falls back to deterministic slug-based keys when AI is unavailable
 - Rewrites source files with Babel AST transforms
-- Injects the configured translation import automatically
+- Injects adapter-aware translation calls for generic, `react-i18next`, and `next-intl` setups
 - Creates and synchronizes locale files in configurable JSON or JavaScript layouts
 - Translates target locales with Lingo.dev
 - Caches translated strings in `.globalyze/translations.json`
 - Falls back to English values when translation credentials or network access are unavailable
-- Tracks key usage and origin metadata in `.globalyze/translationGraph.json`
+- Tracks key usage, origin metadata, and governance metadata in `.globalyze/translationGraph.json`
+- Supports runtime adapters for generic/custom runtimes, `react-i18next`, `next-intl`, and `react-intl`
+- Separates one-time migration (`globalize`) from ongoing maintenance (`sync`)
+- Supports translation ownership, locking, and approval-aware governance workflows
 - Detects duplicate source texts, unused keys, and supports key renames from the CLI
 - Ships an ESLint plugin rule for hardcoded JSX strings
 - Checks translation coverage and reports missing keys
@@ -174,7 +177,7 @@ globalyze translate
 ### 6. Run the full pipeline
 
 ```bash
-globalyze run
+globalyze sync
 ```
 
 ## Environment Variables
@@ -250,6 +253,35 @@ Use this when you want to move between:
 Options:
 
 - `-c, --config <path>`
+
+### `globalyze globalize`
+
+Runs the one-time migration workflow for a non-internationalized project.
+
+What it does:
+
+- scans for hardcoded UI strings
+- generates semantic keys
+- transforms source code
+- syncs locale files
+- translates target locales
+- writes adapter guidance when runtime/provider injection is ambiguous
+
+### `globalyze sync`
+
+Maintains an already-globalized project.
+
+What it does:
+
+- detects new UI strings
+- updates locale files
+- translates new entries
+- refreshes the translation graph
+- applies governance checks for owned, locked, and approval-required keys
+
+### `globalyze run`
+
+Deprecated alias for `globalyze sync`.
 
 ### `globalyze dynamic-remove`
 
@@ -354,23 +386,6 @@ Note:
 
 - `watch` updates source files, syncs locale files, translates new keys into target locales, and removes deleted keys from locale outputs
 
-### `globalyze run`
-
-Runs the full pipeline:
-
-1. scan files
-2. extract strings
-3. generate keys
-4. transform source
-5. sync locale files
-6. translate target locales
-
-Options:
-
-- `-c, --config <path>`
-- `--source-dir <path>`
-- `--locales-dir <path>`
-
 ## Configuration
 
 Globalyze is configured with `globalyze.config.ts`.
@@ -392,6 +407,7 @@ export default {
   },
   cacheTranslations: true,
   dynamicExtraction: false,
+  i18nAdapter: "generic",
   translationInstructions: [
     "This is a Next.js commerce application.",
     "Use natural commerce wording for pricing, checkout, orders, and purchase actions.",
@@ -402,7 +418,12 @@ export default {
   geminiModel: "gemini-2.5-flash-lite",
   aiBatchSize: 20,
   translationImportPath: "@/i18n",
-  translationFunctionName: "t"
+  translationFunctionName: "t",
+  governance: {
+    enabled: false,
+    failOnLockedChange: true,
+    failOnApprovalRequiredChange: false
+  }
 };
 ```
 
@@ -415,6 +436,7 @@ export default {
 - `localeStructure`: file format, layout, and multi-file naming convention for locale output
 - `cacheTranslations`: persist and reuse translated strings from `.globalyze/translations.json`
 - `dynamicExtraction`: enable extraction and transformation of interpolated JSX strings
+- `i18nAdapter`: choose a built-in runtime adapter or stay generic/custom
 - `translationInstructions`: editable translation context inferred during `globalyze init` and forwarded to Lingo as per-key hints
 - `sourceLocale`: canonical source locale, default `en`
 - `openAiModel`: OpenAI model for key generation
@@ -422,7 +444,36 @@ export default {
 - `aiBatchSize`: number of strings per key-generation batch
 - `translationImportPath`: import path to inject when transforming source
 - `translationFunctionName`: translation function name to call in transformed JSX
+- `translationHookName`: optional custom hook name for custom adapters
+- `providerImportPath`: optional provider import path for custom adapters
+- `providerComponentName`: optional provider component name for custom adapters
+- `governance`: enterprise review controls for locked and approval-required value changes
 - `lingoApiUrl`: optional custom Lingo API base URL
+
+## Runtime Adapters
+
+Globalyze does not ship its own i18n runtime. It acts as:
+
+- codemod and migration tool
+- translation automation layer
+- locale structure manager
+- governance and CI enforcement system
+
+Built-in adapters:
+
+- `generic`
+- `custom`
+- `react-i18next`
+- `next-intl`
+- `react-intl`
+
+Use `i18nAdapter` in `globalyze.config.ts` to pick the runtime shape. For custom runtimes, keep using:
+
+- `translationImportPath`
+- `translationFunctionName`
+- `translationHookName`
+- `providerImportPath`
+- `providerComponentName`
 
 ## Using Globalyze On Another Repository
 
@@ -445,7 +496,8 @@ Then:
 cd /Users/bilal/Documents/Calendaty
 globalyze init
 globalyze scan
-globalyze run
+globalyze globalize
+globalyze sync
 ```
 
 ## Interactive CLI
@@ -455,6 +507,8 @@ Running `globalyze` with no arguments opens a prompt-driven menu powered by `@cl
 Available actions:
 
 - Scan project for strings
+- Globalize project
+- Sync translations
 - Add languages to config
 - Change locale file style
 - Remove dynamic translations
@@ -465,7 +519,6 @@ Available actions:
 - Clean unused locale keys
 - Watch for new strings
 - Analyze screenshot
-- Run full pipeline
 - Show translation report
 - Show project score
 
@@ -477,7 +530,7 @@ Current workflow behavior:
 
 - runs on `pull_request`
 - installs the Globalyze CLI
-- runs `globalyze run`
+- runs `globalyze sync`
 - commits generated changes with `globalyze bot: add missing translations`
 - pushes fixes back to the PR branch when allowed
 - runs `globalyze scan --fail-on-findings`
@@ -647,7 +700,44 @@ Globalyze maintains two cache files under the main repo root:
 - `.globalyze/translationGraph.json`
   Tracks key text, origin file, target locale file, and source usages.
 
-The graph is refreshed during `scan`, `transform`, and `run`.
+The graph is refreshed during `scan`, `transform`, `globalize`, and `sync`.
+
+## Ownership And Governance
+
+Globalyze supports optional governance metadata per translation key:
+
+- `owner`
+- `locked`
+- `approvalRequired`
+
+Compatible locale values:
+
+```json
+{
+  "checkout.pay_button": {
+    "value": "Pay now",
+    "owner": "payments-team",
+    "locked": false,
+    "approvalRequired": true
+  }
+}
+```
+
+Plain string locale values are still supported and remain backward-compatible.
+
+Management commands:
+
+- `globalyze owner <key> <team>`
+- `globalyze lock <key>`
+- `globalyze unlock <key>`
+
+Governance behavior during `sync` and CI:
+
+- locked key changes fail by default
+- approval-required key changes are reported for review
+- owned key changes print owner information
+
+These defaults are controlled by `governance.enabled`, `governance.failOnLockedChange`, and `governance.failOnApprovalRequiredChange`.
 
 ## Architecture Overview
 
@@ -659,8 +749,12 @@ Globalyze is organized as a small set of focused modules:
   Parses files with Babel and extracts UI strings or existing translation keys
 - `src/ai`
   Generates semantic keys with OpenAI and handles similarity-based key reuse
+- `src/adapters`
+  Resolves runtime-specific import, hook, and provider behavior
 - `src/transformer`
-  Rewrites JSX AST nodes and injects the translation import
+  Rewrites JSX AST nodes and injects adapter-aware translation usage
+- `src/governance`
+  Evaluates locked, owned, and approval-required translation changes
 - `src/i18n`
   Builds, merges, syncs, validates, and rewrites locale dictionaries through pluggable writers
 - `src/lingo`
@@ -689,7 +783,8 @@ High-level flow:
 5. transform source files
 6. sync locale files
 7. optionally translate target locales
-8. validate/report in CI and local workflows
+8. update governance-aware translation graph data
+9. validate/report in CI and local workflows
 
 ## Development Workflow
 

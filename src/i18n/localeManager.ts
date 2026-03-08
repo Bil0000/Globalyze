@@ -3,6 +3,7 @@ import path from "node:path";
 import type {
   KeyAssignment,
   LocaleDictionary,
+  LocaleEntryDictionary,
   LocaleKeyReference,
   LocaleSyncResult,
   MissingTranslationReport,
@@ -24,6 +25,21 @@ export function buildSourceLocale(
   }
 
   return locale;
+}
+
+function mergeMetadata(
+  current: LocaleEntryDictionary,
+  nextValues: LocaleDictionary
+): LocaleEntryDictionary {
+  return Object.fromEntries(
+    Object.entries(nextValues).map(([key, value]) => [
+      key,
+      {
+        ...(current[key] ?? {}),
+        value
+      }
+    ])
+  );
 }
 
 export function getLocaleFilePath(
@@ -59,6 +75,7 @@ export async function syncLocaleFiles(
     const localePath = path.join(config.localesDir, language);
     const existed = await pathExists(localePath);
     const current = await readLocaleDictionary(config, language);
+    const currentEntries = await readLocaleEntries(config, language);
     const nextLocale: LocaleDictionary = {};
 
     for (const [key, englishValue] of Object.entries(effectiveSourceLocale)) {
@@ -70,11 +87,14 @@ export async function syncLocaleFiles(
       nextLocale[key] = current[key] ?? "";
     }
 
-    await writer.writeLanguage(
+    await writer.writeLanguageEntries(
       config,
       language,
-      nextLocale,
-      effectiveSourceLocale,
+      mergeMetadata(currentEntries, nextLocale),
+      mergeMetadata(
+        language === config.sourceLocale ? currentEntries : await readLocaleEntries(config, config.sourceLocale),
+        effectiveSourceLocale
+      ),
       options.sourceAssignments
     );
 
@@ -100,6 +120,13 @@ export async function readLocaleDictionary(
   return createLocaleWriter(config).readLanguage(config, language);
 }
 
+export async function readLocaleEntries(
+  config: ResolvedGlobalyzeConfig,
+  language: string
+): Promise<LocaleEntryDictionary> {
+  return createLocaleWriter(config).readLanguageEntries(config, language);
+}
+
 export async function writeLocaleDictionary(
   config: ResolvedGlobalyzeConfig,
   language: string,
@@ -109,12 +136,66 @@ export async function writeLocaleDictionary(
     language === config.sourceLocale
       ? locale
       : await readLocaleDictionary(config, config.sourceLocale);
-  await createLocaleWriter(config).writeLanguage(
+  const currentEntries = await readLocaleEntries(config, language);
+  const sourceEntries = mergeMetadata(
+    language === config.sourceLocale
+      ? currentEntries
+      : await readLocaleEntries(config, config.sourceLocale),
+    sourceLocale
+  );
+  await createLocaleWriter(config).writeLanguageEntries(
+    config,
+    language,
+    mergeMetadata(currentEntries, locale),
+    sourceEntries
+  );
+}
+
+export async function writeLocaleEntries(
+  config: ResolvedGlobalyzeConfig,
+  language: string,
+  locale: LocaleEntryDictionary
+): Promise<void> {
+  const sourceEntries =
+    language === config.sourceLocale
+      ? locale
+      : await readLocaleEntries(config, config.sourceLocale);
+  await createLocaleWriter(config).writeLanguageEntries(
     config,
     language,
     locale,
-    sourceLocale
+    sourceEntries
   );
+}
+
+export async function updateTranslationMetadata(
+  config: ResolvedGlobalyzeConfig,
+  key: string,
+  updates: {
+    owner?: string;
+    locked?: boolean;
+    approvalRequired?: boolean;
+  }
+): Promise<void> {
+  for (const language of config.languages) {
+    const entries = await readLocaleEntries(config, language);
+    const entry = entries[key];
+
+    if (!entry) {
+      continue;
+    }
+
+    entries[key] = {
+      ...entry,
+      ...(updates.owner !== undefined ? { owner: updates.owner } : {}),
+      ...(updates.locked !== undefined ? { locked: updates.locked } : {}),
+      ...(updates.approvalRequired !== undefined
+        ? { approvalRequired: updates.approvalRequired }
+        : {})
+    };
+
+    await writeLocaleEntries(config, language, entries);
+  }
 }
 
 export async function mergeSourceLocaleDictionary(
@@ -151,6 +232,7 @@ export async function ensureLocaleCoverageReady(
   if (!(await pathExists(config.localesDir))) {
     throw new GlobalyzeError(
       `Locales directory does not exist: ${config.localesDir}. Run "globalyze transform" or "globalyze run" first.`
+        .replace('"globalyze run"', '"globalyze sync"')
     );
   }
 
@@ -163,6 +245,7 @@ export async function ensureLocaleCoverageReady(
   ) {
     throw new GlobalyzeError(
       `Source locale output does not exist for ${config.sourceLocale} in ${config.localesDir}. Run "globalyze transform" or "globalyze run" first.`
+        .replace('"globalyze run"', '"globalyze sync"')
     );
   }
 
@@ -171,6 +254,7 @@ export async function ensureLocaleCoverageReady(
   if (Object.keys(sourceLocale).length === 0) {
     throw new GlobalyzeError(
       `Source locale output for ${config.sourceLocale} is empty in ${config.localesDir}. Run "globalyze transform" or "globalyze run" first.`
+        .replace('"globalyze run"', '"globalyze sync"')
     );
   }
 }

@@ -1,8 +1,9 @@
 import { parse } from "@babel/parser";
 import generate from "@babel/generator";
-import traverse from "@babel/traverse";
+import traverse, { type NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
 
+import { resolveI18nAdapter } from "../adapters";
 import type {
   FileTransformResult,
   ResolvedGlobalyzeConfig
@@ -37,26 +38,28 @@ function parseModule(source: string, filePath: string) {
 }
 
 function createTranslationExpression(
-  functionName: string,
+  adapter: ReturnType<typeof resolveI18nAdapter>,
   key: string,
   interpolation?: Record<string, string>
 ): t.CallExpression {
-  const args: t.Expression[] = [t.stringLiteral(key)];
-
-  if (interpolation && Object.keys(interpolation).length > 0) {
-    args.push(
-      t.objectExpression(
-        Object.entries(interpolation).map(([name, expression]) =>
-          t.objectProperty(
-            t.identifier(name),
+  const parsedInterpolation =
+    interpolation && Object.keys(interpolation).length > 0
+      ? Object.fromEntries(
+          Object.entries(interpolation).map(([name, expression]) => [
+            name,
             parseInterpolationExpression(expression)
-          )
+          ])
         )
-      )
+      : undefined;
+  const expression = adapter.buildTranslationCall(key, parsedInterpolation);
+
+  if (!t.isCallExpression(expression)) {
+    throw new GlobalyzeError(
+      `Adapter ${adapter.name} produced an invalid translation call for ${key}.`
     );
   }
 
-  return t.callExpression(t.identifier(functionName), args);
+  return expression;
 }
 
 function parseInterpolationExpression(expression: string): t.Expression {
@@ -76,7 +79,7 @@ function parseInterpolationExpression(expression: string): t.Expression {
 
 function createJsxTextReplacement(
   rawText: string,
-  functionName: string,
+  adapter: ReturnType<typeof resolveI18nAdapter>,
   key: string
 ): (t.JSXText | t.JSXExpressionContainer)[] {
   const nodes: (t.JSXText | t.JSXExpressionContainer)[] = [];
@@ -87,7 +90,7 @@ function createJsxTextReplacement(
   }
 
   nodes.push(
-    t.jsxExpressionContainer(createTranslationExpression(functionName, key))
+    t.jsxExpressionContainer(createTranslationExpression(adapter, key))
   );
 
   if (!hasLineBreak && /\s+$/.test(rawText)) {
@@ -95,6 +98,27 @@ function createJsxTextReplacement(
   }
 
   return nodes;
+}
+
+function findNearestFunctionBodyPath(
+  path: NodePath
+): NodePath<t.BlockStatement> | null {
+  let current: NodePath | null = path.parentPath;
+
+  while (current) {
+    if (
+      (current.isFunctionDeclaration() ||
+        current.isFunctionExpression() ||
+        current.isArrowFunctionExpression()) &&
+      t.isBlockStatement(current.node.body)
+    ) {
+      return current.get("body") as NodePath<t.BlockStatement>;
+    }
+
+    current = current.parentPath;
+  }
+
+  return null;
 }
 
 export async function transformFile(
@@ -125,12 +149,16 @@ export function transformSource(
   code: string;
 } {
   const ast = parseModule(source, filePath);
+  const adapter = resolveI18nAdapter(config);
   const state = {
     transformed: false,
     replacements: 0,
     hasTranslationImport: false,
+    hasHookImport: false,
     hasConflictingTranslationBinding: false,
-    translationImportIndex: -1
+    translationImportIndex: -1,
+    hookImportIndex: -1,
+    hookBodies: [] as NodePath<t.BlockStatement>[]
   };
 
   traverse(ast, {
@@ -138,27 +166,39 @@ export function transformSource(
       for (const statement of programPath.node.body) {
         if (
           t.isImportDeclaration(statement) &&
-          statement.source.value === config.translationImportPath
+          statement.source.value === (adapter.importPath ?? config.translationImportPath)
         ) {
           state.translationImportIndex = programPath.node.body.indexOf(statement);
           state.hasTranslationImport = statement.specifiers.some(
             (specifier) =>
               t.isImportSpecifier(specifier) &&
               t.isIdentifier(specifier.imported, {
-                name: config.translationFunctionName
+                name: adapter.translationFunctionName
               })
           );
+          state.hasHookImport =
+            !!adapter.hookName &&
+            statement.specifiers.some(
+              (specifier) =>
+                t.isImportSpecifier(specifier) &&
+                t.isIdentifier(specifier.imported, {
+                  name: adapter.hookName
+                })
+            );
+          if (state.hasHookImport) {
+            state.hookImportIndex = programPath.node.body.indexOf(statement);
+          }
         }
       }
 
-      const binding = programPath.scope.getBinding(config.translationFunctionName);
+      const binding = programPath.scope.getBinding(adapter.translationFunctionName);
 
       if (binding) {
         const isExpectedImport =
           binding.path.isImportSpecifier() &&
           binding.path.parentPath.isImportDeclaration() &&
           binding.path.parentPath.node.source.value ===
-            config.translationImportPath;
+            (adapter.importPath ?? config.translationImportPath);
 
         if (!isExpectedImport) {
           state.hasConflictingTranslationBinding = true;
@@ -180,9 +220,15 @@ export function transformSource(
 
       const replacement = createJsxTextReplacement(
         path.node.value,
-        config.translationFunctionName,
+        adapter,
         key
       );
+      const bodyPath = adapter.canInjectHook
+        ? findNearestFunctionBodyPath(path)
+        : null;
+      if (bodyPath) {
+        state.hookBodies.push(bodyPath);
+      }
 
       state.transformed = true;
       state.replacements += 1;
@@ -221,9 +267,15 @@ export function transformSource(
         }
 
         path.node.expression = createTranslationExpression(
-          config.translationFunctionName,
+          adapter,
           key
         );
+        const bodyPath = adapter.canInjectHook
+          ? findNearestFunctionBodyPath(path)
+          : null;
+        if (bodyPath) {
+          state.hookBodies.push(bodyPath);
+        }
         state.transformed = true;
         state.replacements += 1;
         return;
@@ -246,10 +298,16 @@ export function transformSource(
       }
 
       path.node.expression = createTranslationExpression(
-        config.translationFunctionName,
+        adapter,
         key,
         extracted.variables
       );
+      const bodyPath = adapter.canInjectHook
+        ? findNearestFunctionBodyPath(path)
+        : null;
+      if (bodyPath) {
+        state.hookBodies.push(bodyPath);
+      }
       state.transformed = true;
       state.replacements += 1;
     },
@@ -279,8 +337,14 @@ export function transformSource(
       }
 
       path.node.value = t.jsxExpressionContainer(
-        createTranslationExpression(config.translationFunctionName, key)
+        createTranslationExpression(adapter, key)
       );
+      const bodyPath = adapter.canInjectHook
+        ? findNearestFunctionBodyPath(path)
+        : null;
+      if (bodyPath) {
+        state.hookBodies.push(bodyPath);
+      }
       state.transformed = true;
       state.replacements += 1;
     }
@@ -298,10 +362,31 @@ export function transformSource(
     };
   }
 
-  if (!state.hasTranslationImport) {
+  if (adapter.canInjectHook) {
+    const uniqueBodies = [...new Set(state.hookBodies)];
+
+    for (const bodyPath of uniqueBodies) {
+      const hasLocalBinding = bodyPath.scope.hasOwnBinding(
+        adapter.translationFunctionName
+      );
+
+      if (!hasLocalBinding && adapter.buildHookStatement) {
+        bodyPath.node.body.unshift(adapter.buildHookStatement());
+      }
+    }
+  }
+
+  if (adapter.canInjectHook && adapter.hookName && !state.hasHookImport) {
+    ast.program.body.unshift(
+      t.importDeclaration(
+        [t.importSpecifier(t.identifier(adapter.hookName), t.identifier(adapter.hookName))],
+        t.stringLiteral(adapter.importPath ?? config.translationImportPath)
+      )
+    );
+  } else if (!adapter.canInjectHook && !state.hasTranslationImport) {
     if (state.hasConflictingTranslationBinding) {
       throw new GlobalyzeError(
-        `Cannot add ${config.translationFunctionName} import to ${filePath} because the identifier is already declared locally.`
+        `Cannot add ${adapter.translationFunctionName} import to ${filePath} because the identifier is already declared locally.`
       );
     }
 
@@ -316,8 +401,8 @@ export function transformSource(
 
       existingImport.specifiers.push(
         t.importSpecifier(
-          t.identifier(config.translationFunctionName),
-          t.identifier(config.translationFunctionName)
+          t.identifier(adapter.translationFunctionName),
+          t.identifier(adapter.translationFunctionName)
         )
       );
     } else {
@@ -325,11 +410,11 @@ export function transformSource(
         t.importDeclaration(
           [
             t.importSpecifier(
-              t.identifier(config.translationFunctionName),
-              t.identifier(config.translationFunctionName)
+              t.identifier(adapter.translationFunctionName),
+              t.identifier(adapter.translationFunctionName)
             )
           ],
-          t.stringLiteral(config.translationImportPath)
+          t.stringLiteral(adapter.importPath ?? config.translationImportPath)
         )
       );
     }

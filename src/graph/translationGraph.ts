@@ -7,7 +7,7 @@ import type {
   ResolvedGlobalyzeConfig,
   TranslationGraph
 } from "../types";
-import { readLocaleDictionary } from "../i18n/localeManager";
+import { readLocaleEntries } from "../i18n/localeManager";
 import { buildLocaleFileContents } from "../i18n/writers/shared";
 import { resolveGlobalyzeRootDir, toRelativePosixPath } from "../utils/fileUtils";
 
@@ -55,20 +55,25 @@ export async function updateTranslationGraph(
   config: ResolvedGlobalyzeConfig,
   references: readonly LocaleKeyReference[]
 ): Promise<TranslationGraph> {
-  const sourceLocale = await readLocaleDictionary(config, config.sourceLocale);
+  const sourceLocale = await readLocaleEntries(config, config.sourceLocale);
   const graph: TranslationGraph = {};
   const referencedKeys = [...new Set(references.map((reference) => reference.key))]
-    .filter((key) => typeof sourceLocale[key] === "string");
+    .filter((key) => typeof sourceLocale[key]?.value === "string");
   const fileContents = buildLocaleFileContents(
     config.sourceLocale,
     Object.fromEntries(
-      referencedKeys.map((key) => [key, sourceLocale[key] ?? ""])
+      referencedKeys
+        .map((key) => [key, sourceLocale[key]] as const)
+        .filter((entry): entry is readonly [string, NonNullable<(typeof sourceLocale)[string]>] => !!entry[1])
     ),
     Object.fromEntries(
-      referencedKeys.map((key) => [key, sourceLocale[key] ?? ""])
+      referencedKeys
+        .map((key) => [key, sourceLocale[key]] as const)
+        .filter((entry): entry is readonly [string, NonNullable<(typeof sourceLocale)[string]>] => !!entry[1])
     ),
     config.localeStructure,
-    references
+    references,
+    config.sourceLocale
   );
 
   const localeFileByKey = new Map<string, string>();
@@ -90,10 +95,13 @@ export async function updateTranslationGraph(
     }
 
     graph[key] = {
-      text: sourceLocale[key] ?? "",
+      text: sourceLocale[key]?.value ?? "",
       originFile,
       localeFile: localeFileByKey.get(key) ?? "",
-      usages: [...new Set(usages)]
+      usages: [...new Set(usages)],
+      owner: sourceLocale[key]?.owner,
+      locked: sourceLocale[key]?.locked,
+      approvalRequired: sourceLocale[key]?.approvalRequired
     };
   }
 

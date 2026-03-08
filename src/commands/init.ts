@@ -12,7 +12,11 @@ import {
 } from "../utils/fileUtils";
 import { GlobalyzeError } from "../utils/errors";
 import { logger } from "../utils/logger";
-import type { LocaleStructureConfig } from "../types";
+import type {
+  BuiltInI18nAdapter,
+  LocaleStructureConfig,
+  TranslationGovernanceConfig
+} from "../types";
 
 export async function promptLocaleStructure(): Promise<LocaleStructureConfig> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
@@ -132,6 +136,8 @@ export async function executeInitCommand(
     langs?: string;
     localeStructure?: LocaleStructureConfig;
     dynamicExtraction?: boolean;
+    i18nAdapter?: BuiltInI18nAdapter;
+    governance?: TranslationGovernanceConfig;
   } = {}
 ): Promise<void> {
   const configPath = "globalyze.config.ts";
@@ -146,9 +152,11 @@ export async function executeInitCommand(
     ? normalizeLanguageCodes(options.langs.split(","))
     : await resolveInitialLanguages();
   const translationInstructions = await inferTranslationInstructions(process.cwd());
+  const i18nAdapter = options.i18nAdapter ?? (await promptI18nAdapter());
   const localeStructure = options.localeStructure ?? await promptLocaleStructure();
   const dynamicExtraction =
     options.dynamicExtraction ?? (await promptDynamicExtraction());
+  const governance = options.governance ?? (await promptGovernance());
 
   await writeTextFile(
     configPath,
@@ -156,7 +164,9 @@ export async function executeInitCommand(
       languages,
       translationInstructions,
       localeStructure,
-      dynamicExtraction
+      dynamicExtraction,
+      i18nAdapter,
+      governance
     )
   );
   logger.success(
@@ -182,6 +192,55 @@ async function promptDynamicExtraction(): Promise<boolean> {
   }
 
   return enabled;
+}
+
+async function promptI18nAdapter(): Promise<BuiltInI18nAdapter> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return "generic";
+  }
+
+  const adapter = await select({
+    message: "Select i18n adapter",
+    initialValue: "generic",
+    options: [
+      { label: "Generic (recommended)", value: "generic", hint: "safe default runtime" },
+      { label: "react-i18next", value: "react-i18next", hint: "hook-based React runtime" },
+      { label: "next-intl", value: "next-intl", hint: "Next.js runtime adapter" },
+      { label: "react-intl", value: "react-intl", hint: "formatjs runtime adapter" },
+      { label: "Custom", value: "custom", hint: "manual runtime wiring" }
+    ]
+  });
+
+  if (isCancel(adapter)) {
+    throw new GlobalyzeError("Adapter setup was cancelled.");
+  }
+
+  return adapter as BuiltInI18nAdapter;
+}
+
+async function promptGovernance(): Promise<TranslationGovernanceConfig> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return {
+      enabled: false,
+      failOnLockedChange: true,
+      failOnApprovalRequiredChange: false
+    };
+  }
+
+  const enabled = await confirm({
+    message: "Enable governance? (enterprise, big-team reviews)",
+    initialValue: false
+  });
+
+  if (isCancel(enabled)) {
+    throw new GlobalyzeError("Governance setup was cancelled.");
+  }
+
+  return {
+    enabled,
+    failOnLockedChange: true,
+    failOnApprovalRequiredChange: false
+  };
 }
 
 async function resolveInitialLanguages(): Promise<string[] | undefined> {

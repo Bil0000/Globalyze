@@ -1,5 +1,6 @@
 import type {
   LocaleDictionary,
+  LocaleEntryDictionary,
   LocaleKeyReference,
   ResolvedGlobalyzeConfig
 } from "../../types";
@@ -10,11 +11,22 @@ import { JsonSingleWriter } from "./JsonSingleWriter";
 
 interface LocaleWriter {
   readLanguage(config: ResolvedGlobalyzeConfig, language: string): Promise<LocaleDictionary>;
+  readLanguageEntries(
+    config: ResolvedGlobalyzeConfig,
+    language: string
+  ): Promise<LocaleEntryDictionary>;
   writeLanguage(
     config: ResolvedGlobalyzeConfig,
     language: string,
     locale: LocaleDictionary,
     sourceLocale: LocaleDictionary,
+    assignments?: readonly LocaleKeyReference[]
+  ): Promise<void>;
+  writeLanguageEntries(
+    config: ResolvedGlobalyzeConfig,
+    language: string,
+    locale: LocaleEntryDictionary,
+    sourceLocale: LocaleEntryDictionary,
     assignments?: readonly LocaleKeyReference[]
   ): Promise<void>;
   removeStaleLanguages(

@@ -12,6 +12,19 @@ export interface LocaleStructureConfig {
   naming: LocaleFileNaming;
 }
 
+export type BuiltInI18nAdapter =
+  | "generic"
+  | "react-i18next"
+  | "next-intl"
+  | "react-intl"
+  | "custom";
+
+export interface TranslationGovernanceConfig {
+  enabled: boolean;
+  failOnLockedChange: boolean;
+  failOnApprovalRequiredChange: boolean;
+}
+
 export interface ResolvedNameMetadata {
   type: "page" | "component";
   name: string;
@@ -32,12 +45,17 @@ export interface GlobalyzeConfig {
   cacheTranslations?: boolean;
   dynamicExtraction?: boolean;
   translationInstructions?: string[];
+  i18nAdapter?: BuiltInI18nAdapter;
   sourceLocale?: string;
   openAiModel?: string;
   geminiModel?: string;
   aiBatchSize?: number;
   translationImportPath?: string;
   translationFunctionName?: string;
+  translationHookName?: string;
+  providerImportPath?: string;
+  providerComponentName?: string;
+  governance?: Partial<TranslationGovernanceConfig>;
   lingoApiUrl?: string;
 }
 
@@ -51,12 +69,17 @@ export interface ResolvedGlobalyzeConfig {
   cacheTranslations: boolean;
   dynamicExtraction: boolean;
   translationInstructions: string[];
+  i18nAdapter: BuiltInI18nAdapter;
   sourceLocale: string;
   openAiModel: string;
   geminiModel: string;
   aiBatchSize: number;
   translationImportPath: string;
   translationFunctionName: string;
+  translationHookName?: string;
+  providerImportPath?: string;
+  providerComponentName?: string;
+  governance: TranslationGovernanceConfig;
   lingoApiUrl?: string;
 }
 
@@ -90,6 +113,13 @@ export interface LocaleKeyReference {
   file: string;
 }
 
+export interface TranslationMetaEntry {
+  value: string;
+  owner?: string;
+  locked?: boolean;
+  approvalRequired?: boolean;
+}
+
 export interface DynamicExtractionCandidate {
   text: string;
   template: string;
@@ -120,11 +150,13 @@ export interface ScanResult {
   strings: ExtractedString[];
 }
 
+export type LocaleEntry = string | TranslationMetaEntry;
 export type LocaleDictionary = Record<string, string>;
+export type LocaleEntryDictionary = Record<string, TranslationMetaEntry>;
 
 export interface LocaleFileContent {
   fileName: string;
-  entries: LocaleDictionary;
+  entries: LocaleEntryDictionary;
 }
 
 export interface LocaleSyncResult {
@@ -229,6 +261,9 @@ export interface TranslationGraphEntry {
   originFile: string;
   localeFile: string;
   usages: string[];
+  owner?: string;
+  locked?: boolean;
+  approvalRequired?: boolean;
 }
 
 export type TranslationGraph = Record<string, TranslationGraphEntry>;
@@ -236,4 +271,20 @@ export type TranslationGraph = Record<string, TranslationGraphEntry>;
 export interface DetectedLanguageResult {
   languages: string[];
   sources: string[];
+}
+
+export interface GovernanceChange {
+  key: string;
+  previousValue: string;
+  nextValue: string;
+  owner?: string;
+  locked?: boolean;
+  approvalRequired?: boolean;
+}
+
+export interface GovernanceEvaluationResult {
+  changedKeys: GovernanceChange[];
+  lockedViolations: GovernanceChange[];
+  approvalRequiredChanges: GovernanceChange[];
+  ownedChanges: GovernanceChange[];
 }

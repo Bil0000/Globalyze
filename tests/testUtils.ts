@@ -16,6 +16,7 @@ export function createTestConfig(
     localeStructure: DEFAULT_LOCALE_STRUCTURE,
     cacheTranslations: true,
     dynamicExtraction: true,
+    i18nAdapter: "generic",
     translationInstructions: [
       "This is a React application with user-facing UI text.",
       "Keep labels, actions, and short UI text concise and natural for the target locale.",
@@ -27,6 +28,14 @@ export function createTestConfig(
     aiBatchSize: 20,
     translationImportPath: "@/i18n",
     translationFunctionName: "t",
+    translationHookName: undefined,
+    providerImportPath: undefined,
+    providerComponentName: undefined,
+    governance: {
+      enabled: false,
+      failOnLockedChange: true,
+      failOnApprovalRequiredChange: false
+    },
     lingoApiUrl: undefined,
     ...overrides
   };

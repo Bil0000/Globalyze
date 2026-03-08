@@ -7,10 +7,13 @@ import fs from "fs-extra";
 
 import type {
   LocaleDictionary,
+  LocaleEntry,
+  LocaleEntryDictionary,
   LocaleFileContent,
   LocaleKeyReference,
   LocaleStructureConfig,
-  ResolvedGlobalyzeConfig
+  ResolvedGlobalyzeConfig,
+  TranslationMetaEntry
 } from "../../types";
 import { GlobalyzeError } from "../../utils/errors";
 
@@ -46,6 +49,27 @@ function pascalCase(value: string): string {
   return output.length > 0
     ? `${output.slice(0, 1).toUpperCase()}${output.slice(1)}`
     : output;
+}
+
+export function normalizeLocaleEntry(value: LocaleEntry): TranslationMetaEntry {
+  return typeof value === "string"
+    ? { value }
+    : {
+        value: value.value,
+        ...(value.owner ? { owner: value.owner } : {}),
+        ...(typeof value.locked === "boolean" ? { locked: value.locked } : {}),
+        ...(typeof value.approvalRequired === "boolean"
+          ? { approvalRequired: value.approvalRequired }
+          : {})
+      };
+}
+
+export function buildPlainLocaleDictionary(
+  entries: LocaleEntryDictionary
+): LocaleDictionary {
+  return Object.fromEntries(
+    Object.entries(entries).map(([key, value]) => [key, value.value])
+  );
 }
 
 function buildLocalizedFileName(
@@ -110,7 +134,7 @@ function resolveBucketFromKey(key: string): string {
 }
 
 function buildInitialBuckets(
-  sourceLocale: LocaleDictionary,
+  sourceLocale: LocaleEntryDictionary,
   assignments: readonly LocaleKeyReference[] | undefined,
   splitStrategy: LocaleStructureConfig["splitStrategy"]
 ): Map<string, string[]> {
@@ -134,13 +158,13 @@ function buildInitialBuckets(
 
 function moveRepeatedValuesToCommon(
   buckets: Map<string, string[]>,
-  sourceLocale: LocaleDictionary
+  sourceLocale: LocaleEntryDictionary
 ): Map<string, string[]> {
   const valueToBuckets = new Map<string, Set<string>>();
 
   for (const [bucket, keys] of buckets.entries()) {
     for (const key of keys) {
-      const value = sourceLocale[key];
+      const value = sourceLocale[key]?.value;
 
       if (!value) {
         continue;
@@ -160,7 +184,7 @@ function moveRepeatedValuesToCommon(
     }
 
     for (const [key, localeValue] of Object.entries(sourceLocale)) {
-      if (localeValue === value) {
+      if (localeValue.value === value) {
         commonKeys.add(key);
       }
     }
@@ -190,11 +214,17 @@ function moveRepeatedValuesToCommon(
 
 export function buildLocaleFileContents(
   language: string,
-  locale: LocaleDictionary,
-  sourceLocale: LocaleDictionary,
+  locale: LocaleEntryDictionary,
+  sourceLocale: LocaleEntryDictionary,
   structure: LocaleStructureConfig,
-  assignments?: readonly LocaleKeyReference[]
+  assignments?: readonly LocaleKeyReference[],
+  sourceLanguage = "en"
 ): LocaleFileContent[] {
+  const buildFallbackEntry = (key: string): TranslationMetaEntry => ({
+    ...(sourceLocale[key] ?? { value: "" }),
+    value: language === sourceLanguage ? sourceLocale[key]?.value ?? "" : ""
+  });
+
   if (structure.structure === "single") {
     return [
       {
@@ -202,7 +232,10 @@ export function buildLocaleFileContents(
         entries: Object.fromEntries(
           Object.keys(sourceLocale)
             .sort((left, right) => left.localeCompare(right))
-            .map((key) => [key, locale[key] ?? ""])
+            .map((key) => [
+              key,
+              locale[key] ?? buildFallbackEntry(key)
+            ])
         )
       }
     ];
@@ -222,23 +255,56 @@ export function buildLocaleFileContents(
     .map(([bucket, keys]) => ({
       fileName: buildLocalizedFileName(bucket, structure),
       entries: Object.fromEntries(
-        keys.map((key) => [key, locale[key] ?? ""])
+        keys.map((key) => [
+          key,
+          locale[key] ?? buildFallbackEntry(key)
+        ])
       )
     }));
 }
 
-function formatJson(entries: LocaleDictionary): string {
+function serializeLocaleEntry(
+  rawValue: LocaleEntry
+): string | Record<string, unknown> {
+  const value = normalizeLocaleEntry(rawValue);
+
+  if (!value.owner && value.locked !== true && value.approvalRequired !== true) {
+    return value.value;
+  }
+
+  const serialized: Record<string, unknown> = {
+    value: value.value
+  };
+
+  if (value.owner) {
+    serialized.owner = value.owner;
+  }
+  if (typeof value.locked === "boolean") {
+    serialized.locked = value.locked;
+  }
+  if (typeof value.approvalRequired === "boolean") {
+    serialized.approvalRequired = value.approvalRequired;
+  }
+
+  return serialized;
+}
+
+function formatJson(entries: LocaleEntryDictionary): string {
   const sorted = Object.fromEntries(
-    Object.entries(entries).sort(([left], [right]) => left.localeCompare(right))
+    Object.entries(entries)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => [key, serializeLocaleEntry(value)])
   );
 
   return `${JSON.stringify(sorted, null, 2)}\n`;
 }
 
-function formatJs(entries: LocaleDictionary, fileName: string): string {
+function formatJs(entries: LocaleEntryDictionary, fileName: string): string {
   const exportName = camelCase(fileName.replace(/\.[^.]+$/, "")) || "locale";
   const sorted = Object.fromEntries(
-    Object.entries(entries).sort(([left], [right]) => left.localeCompare(right))
+    Object.entries(entries)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => [key, serializeLocaleEntry(value)])
   );
 
   return [
@@ -265,36 +331,84 @@ export async function writeLocaleFiles(
   }
 }
 
-function parseObjectExpression(node: t.ObjectExpression): LocaleDictionary {
-  const entries: LocaleDictionary = {};
+function readObjectPropertyKey(property: t.ObjectProperty): string | null {
+  return t.isIdentifier(property.key)
+    ? property.key.name
+    : t.isStringLiteral(property.key)
+      ? property.key.value
+      : null;
+}
+
+function parseObjectExpression(node: t.ObjectExpression): LocaleEntryDictionary {
+  const entries: LocaleEntryDictionary = {};
 
   for (const property of node.properties) {
     if (!t.isObjectProperty(property)) {
       continue;
     }
 
-    const key = t.isIdentifier(property.key)
-      ? property.key.name
-      : t.isStringLiteral(property.key)
-        ? property.key.value
-        : null;
-    const valueNode =
-      t.isStringLiteral(property.value) ? property.value.value : null;
+    const key = readObjectPropertyKey(property);
 
-    if (key && valueNode !== null) {
-      entries[key] = valueNode;
+    if (!key) {
+      continue;
+    }
+
+    if (t.isStringLiteral(property.value)) {
+      entries[key] = { value: property.value.value };
+      continue;
+    }
+
+    if (!t.isObjectExpression(property.value)) {
+      continue;
+    }
+
+    const nextEntry: Partial<TranslationMetaEntry> = {};
+
+    for (const nestedProperty of property.value.properties) {
+      if (!t.isObjectProperty(nestedProperty)) {
+        continue;
+      }
+
+      const nestedKey = readObjectPropertyKey(nestedProperty);
+
+      if (!nestedKey) {
+        continue;
+      }
+
+      if (nestedKey === "value" && t.isStringLiteral(nestedProperty.value)) {
+        nextEntry.value = nestedProperty.value.value;
+      }
+      if (nestedKey === "owner" && t.isStringLiteral(nestedProperty.value)) {
+        nextEntry.owner = nestedProperty.value.value;
+      }
+      if (nestedKey === "locked" && t.isBooleanLiteral(nestedProperty.value)) {
+        nextEntry.locked = nestedProperty.value.value;
+      }
+      if (
+        nestedKey === "approvalRequired" &&
+        t.isBooleanLiteral(nestedProperty.value)
+      ) {
+        nextEntry.approvalRequired = nestedProperty.value.value;
+      }
+    }
+
+    if (typeof nextEntry.value === "string") {
+      entries[key] = normalizeLocaleEntry(nextEntry as TranslationMetaEntry);
     }
   }
 
   return entries;
 }
 
-export function parseJsLocaleModule(source: string, filePath: string): LocaleDictionary {
+export function parseJsLocaleModule(
+  source: string,
+  filePath: string
+): LocaleEntryDictionary {
   const ast = parse(source, {
     sourceType: "module",
     plugins: ["typescript"]
   });
-  let extracted: LocaleDictionary = {};
+  let extracted: LocaleEntryDictionary = {};
 
   traverse(ast, {
     ExportNamedDeclaration(path) {
@@ -337,7 +451,19 @@ export function parseJsLocaleModule(source: string, filePath: string): LocaleDic
   return extracted;
 }
 
-export async function readLocaleFile(filePath: string): Promise<LocaleDictionary> {
+function isTranslationMetaShape(value: unknown): value is TranslationMetaEntry {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !Array.isArray(value) &&
+    "value" in value &&
+    typeof value.value === "string"
+  );
+}
+
+export async function readLocaleFileEntries(
+  filePath: string
+): Promise<LocaleEntryDictionary> {
   const source = await fs.readFile(filePath, "utf8");
 
   if (filePath.endsWith(".json")) {
@@ -347,21 +473,39 @@ export async function readLocaleFile(filePath: string): Promise<LocaleDictionary
       throw new GlobalyzeError(`Expected ${filePath} to contain a JSON object.`);
     }
 
-    return Object.fromEntries(
-      Object.entries(parsed).filter(([, value]) => typeof value === "string")
-    ) as LocaleDictionary;
+    const entries: LocaleEntryDictionary = {};
+
+    for (const [key, value] of Object.entries(parsed)) {
+      if (typeof value === "string") {
+        entries[key] = { value };
+        continue;
+      }
+
+      if (isTranslationMetaShape(value)) {
+        entries[key] = normalizeLocaleEntry(value);
+      }
+    }
+
+    return entries;
   }
 
   return parseJsLocaleModule(source, filePath);
 }
 
-export async function readLanguageDirectory(
+export async function readLocaleFile(filePath: string): Promise<LocaleDictionary> {
+  return buildPlainLocaleDictionary(await readLocaleFileEntries(filePath));
+}
+
+export async function readLanguageDirectoryEntries(
   config: ResolvedGlobalyzeConfig,
   language: string
-): Promise<LocaleDictionary> {
+): Promise<LocaleEntryDictionary> {
   const languageDir = path.join(config.localesDir, language);
-  const legacyFilePath = path.join(config.localesDir, `${language}.${config.localeStructure.format}`);
-  const dictionaries: LocaleDictionary[] = [];
+  const legacyFilePath = path.join(
+    config.localesDir,
+    `${language}.${config.localeStructure.format}`
+  );
+  const dictionaries: LocaleEntryDictionary[] = [];
 
   if (await fs.pathExists(languageDir)) {
     const files = (await fs.readdir(languageDir))
@@ -371,15 +515,26 @@ export async function readLanguageDirectory(
       .sort((left, right) => left.localeCompare(right));
 
     for (const fileName of files) {
-      dictionaries.push(await readLocaleFile(path.join(languageDir, fileName)));
+      dictionaries.push(
+        await readLocaleFileEntries(path.join(languageDir, fileName))
+      );
     }
   } else if (await fs.pathExists(legacyFilePath)) {
-    dictionaries.push(await readLocaleFile(legacyFilePath));
+    dictionaries.push(await readLocaleFileEntries(legacyFilePath));
   }
 
-  return dictionaries.reduce<LocaleDictionary>(
+  return dictionaries.reduce<LocaleEntryDictionary>(
     (accumulator, current) => ({ ...accumulator, ...current }),
     {}
+  );
+}
+
+export async function readLanguageDirectory(
+  config: ResolvedGlobalyzeConfig,
+  language: string
+): Promise<LocaleDictionary> {
+  return buildPlainLocaleDictionary(
+    await readLanguageDirectoryEntries(config, language)
   );
 }
 
