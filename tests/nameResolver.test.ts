@@ -116,4 +116,91 @@ describe("nameResolver", () => {
       "pricing"
     ]);
   });
+
+  it("resolves page ownership through tsconfig baseUrl and path aliases", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-name-resolver-"));
+    tempDirectories.push(rootDir);
+
+    await mkdir(path.join(rootDir, "src", "app", "dashboard"), {
+      recursive: true
+    });
+    await mkdir(path.join(rootDir, "src", "components", "navigation"), {
+      recursive: true
+    });
+    await writeFile(
+      path.join(rootDir, "tsconfig.json"),
+      JSON.stringify(
+        {
+          compilerOptions: {
+            baseUrl: ".",
+            paths: {
+              "@components/*": ["src/components/*"]
+            }
+          }
+        },
+        null,
+        2
+      ),
+      "utf8"
+    );
+
+    const dashboardPage = path.join(
+      rootDir,
+      "src",
+      "app",
+      "dashboard",
+      "page.tsx"
+    );
+    const breadcrumbComponent = path.join(
+      rootDir,
+      "src",
+      "components",
+      "navigation",
+      "Breadcrumb.tsx"
+    );
+    const carouselComponent = path.join(
+      rootDir,
+      "src",
+      "components",
+      "navigation",
+      "Carousel.tsx"
+    );
+
+    await writeFile(
+      dashboardPage,
+      [
+        'import { Breadcrumb } from "@components/navigation/Breadcrumb";',
+        'import { Carousel } from "src/components/navigation/Carousel";',
+        "export default function DashboardPage() {",
+        "  return (",
+        "    <>",
+        "      <Breadcrumb />",
+        "      <Carousel />",
+        "    </>",
+        "  );",
+        "}",
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      breadcrumbComponent,
+      "export function Breadcrumb() { return null; }\n",
+      "utf8"
+    );
+    await writeFile(
+      carouselComponent,
+      "export function Carousel() { return null; }\n",
+      "utf8"
+    );
+
+    const metadata = await buildFileLocalizationMetadata([
+      dashboardPage,
+      breadcrumbComponent,
+      carouselComponent
+    ]);
+
+    expect(metadata.get(breadcrumbComponent)?.pageName).toBe("dashboard");
+    expect(metadata.get(carouselComponent)?.pageName).toBe("dashboard");
+  });
 });

@@ -351,6 +351,53 @@ describe("locale file structures", () => {
     expect(pricingSectionExists).toBe(false);
   });
 
+  it("moves unresolved component-owned keys to common when split by page", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locale-style-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      localeStructure: {
+        format: "js",
+        structure: "multiple",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "camel"
+      }
+    });
+
+    await syncLocaleFiles(
+      config,
+      {
+        "breadcrumb.current": "Current page",
+        "spinner.loading": "Loading"
+      },
+      {
+        sourceAssignments: [
+          {
+            key: "breadcrumb.current",
+            file: "src/components/Breadcrumb.tsx",
+            componentName: "breadcrumb",
+            sourceType: "component"
+          },
+          {
+            key: "spinner.loading",
+            file: "src/components/Spinner.tsx",
+            componentName: "spinner",
+            sourceType: "component"
+          }
+        ]
+      }
+    );
+
+    const commonLocale = await readFile(
+      path.join(rootDir, "locales", "en", "common.js"),
+      "utf8"
+    );
+
+    expect(commonLocale).toContain('"breadcrumb.current": "Current page"');
+    expect(commonLocale).toContain('"spinner.loading": "Loading"');
+  });
+
   it("reorganizes existing locale files during change-style without regenerating keys", async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-change-style-"));
     tempDirectories.push(rootDir);
@@ -358,10 +405,14 @@ describe("locale file structures", () => {
     process.chdir(rootDir);
 
     try {
-      await mkdir(path.join(rootDir, "src", "checkout"), { recursive: true });
-      await mkdir(path.join(rootDir, "src", "support"), { recursive: true });
+      await mkdir(path.join(rootDir, "src", "app", "checkout"), {
+        recursive: true
+      });
+      await mkdir(path.join(rootDir, "src", "app", "support"), {
+        recursive: true
+      });
       await writeFile(
-        path.join(rootDir, "src", "checkout", "page.tsx"),
+        path.join(rootDir, "src", "app", "checkout", "page.tsx"),
         [
           'import { t } from "@/i18n";',
           "export default function CheckoutPage() {",
@@ -372,7 +423,7 @@ describe("locale file structures", () => {
         "utf8"
       );
       await writeFile(
-        path.join(rootDir, "src", "support", "page.tsx"),
+        path.join(rootDir, "src", "app", "support", "page.tsx"),
         [
           'import { t } from "@/i18n";',
           "export default function SupportPage() {",

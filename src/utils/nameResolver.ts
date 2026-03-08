@@ -3,6 +3,7 @@ import path from "node:path";
 import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
 import * as t from "@babel/types";
+import ts from "typescript";
 
 import type { ResolvedNameMetadata } from "../types";
 
@@ -268,11 +269,97 @@ function deriveSourceRoots(filePaths: readonly string[]): string[] {
   return [commonPrefix];
 }
 
+function deriveProjectRoots(sourceRoots: readonly string[]): string[] {
+  const roots = new Set<string>();
+
+  for (const sourceRoot of sourceRoots) {
+    roots.add(sourceRoot);
+    roots.add(path.dirname(sourceRoot));
+  }
+
+  return [...roots];
+}
+
+function resolveTypeScriptImport(
+  importerFile: string,
+  specifier: string,
+  knownFiles: Set<string>,
+  compilerOptionsByConfigPath: Map<string, ts.CompilerOptions>,
+  configPathByDirectory: Map<string, string | null>
+): string | null {
+  let currentDirectory = path.dirname(importerFile);
+  let configPath: string | null | undefined = configPathByDirectory.get(currentDirectory);
+
+  while (typeof configPath === "undefined") {
+    const tsConfigPath = ts.findConfigFile(
+      currentDirectory,
+      (candidate) => ts.sys.fileExists(candidate),
+      "tsconfig.json"
+    );
+    const jsConfigPath =
+      tsConfigPath === undefined
+        ? ts.findConfigFile(
+            currentDirectory,
+            (candidate) => ts.sys.fileExists(candidate),
+            "jsconfig.json"
+          )
+        : undefined;
+
+    configPath = tsConfigPath ?? jsConfigPath ?? null;
+    configPathByDirectory.set(currentDirectory, configPath);
+
+    if (configPath || currentDirectory === path.dirname(currentDirectory)) {
+      break;
+    }
+
+    currentDirectory = path.dirname(currentDirectory);
+    configPath = configPathByDirectory.get(currentDirectory);
+  }
+
+  if (!configPath) {
+    return null;
+  }
+
+  let compilerOptions = compilerOptionsByConfigPath.get(configPath);
+
+  if (!compilerOptions) {
+    const parseHost: ts.ParseConfigFileHost = {
+      ...ts.sys,
+      onUnRecoverableConfigFileDiagnostic: () => undefined
+    };
+    const parsed = ts.getParsedCommandLineOfConfigFile(configPath, {}, parseHost);
+
+    if (!parsed) {
+      return null;
+    }
+
+    compilerOptions = parsed.options;
+    compilerOptionsByConfigPath.set(configPath, compilerOptions);
+  }
+
+  const resolved = ts.resolveModuleName(
+    specifier,
+    importerFile,
+    compilerOptions,
+    ts.sys
+  ).resolvedModule?.resolvedFileName;
+
+  if (!resolved) {
+    return null;
+  }
+
+  const normalized = toAbsolutePosix(resolved);
+  return knownFiles.has(normalized) ? normalized : null;
+}
+
 function resolveLocalImport(
   importerFile: string,
   specifier: string,
   knownFiles: Set<string>,
-  sourceRoots: readonly string[]
+  sourceRoots: readonly string[],
+  projectRoots: readonly string[],
+  compilerOptionsByConfigPath: Map<string, ts.CompilerOptions>,
+  configPathByDirectory: Map<string, string | null>
 ): string | null {
   const basePaths: string[] = [];
 
@@ -280,9 +367,37 @@ function resolveLocalImport(
     basePaths.push(path.resolve(path.dirname(importerFile), specifier));
   }
 
-  if (specifier.startsWith("@/")) {
+  if (specifier.startsWith("@/") || specifier.startsWith("~/")) {
     for (const sourceRoot of sourceRoots) {
       basePaths.push(path.resolve(sourceRoot, specifier.slice(2)));
+    }
+  }
+
+  if (specifier.startsWith("src/")) {
+    for (const projectRoot of projectRoots) {
+      basePaths.push(path.resolve(projectRoot, specifier));
+    }
+  }
+
+  if (!specifier.startsWith(".") && !specifier.startsWith("/") && !specifier.includes(":")) {
+    const typeScriptResolved = resolveTypeScriptImport(
+      importerFile,
+      specifier,
+      knownFiles,
+      compilerOptionsByConfigPath,
+      configPathByDirectory
+    );
+
+    if (typeScriptResolved) {
+      return typeScriptResolved;
+    }
+
+    for (const sourceRoot of sourceRoots) {
+      basePaths.push(path.resolve(sourceRoot, specifier));
+    }
+
+    for (const projectRoot of projectRoots) {
+      basePaths.push(path.resolve(projectRoot, specifier));
     }
   }
 
@@ -320,9 +435,12 @@ export async function buildFileLocalizationMetadata(
   const normalizedFiles = filePaths.map((filePath) => toAbsolutePosix(filePath));
   const knownFiles = new Set(normalizedFiles);
   const sourceRoots = deriveSourceRoots(normalizedFiles);
+  const projectRoots = deriveProjectRoots(sourceRoots);
   const dependencies = new Map<string, string[]>();
   const pageOwners = new Map<string, Set<string>>();
   const metadata = new Map<string, ResolvedFileLocalizationMetadata>();
+  const compilerOptionsByConfigPath = new Map<string, ts.CompilerOptions>();
+  const configPathByDirectory = new Map<string, string | null>();
 
   for (const filePath of normalizedFiles) {
     const source = await Bun.file(filePath).text();
@@ -345,7 +463,15 @@ export async function buildFileLocalizationMetadata(
       filePath,
       parseImports(source)
         .map((specifier) =>
-          resolveLocalImport(filePath, specifier, knownFiles, sourceRoots)
+          resolveLocalImport(
+            filePath,
+            specifier,
+            knownFiles,
+            sourceRoots,
+            projectRoots,
+            compilerOptionsByConfigPath,
+            configPathByDirectory
+          )
         )
         .filter((resolved): resolved is string => resolved !== null)
     );

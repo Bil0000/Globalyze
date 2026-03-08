@@ -153,6 +153,15 @@ function buildInitialBuckets(
     left.localeCompare(right)
   )) {
     const keyAssignments = assignmentMap.get(key) ?? [];
+    const hasPageReference = keyAssignments.some(
+      (assignment) => assignment.sourceType === "page"
+    );
+    const hasComponentReference = keyAssignments.some(
+      (assignment) =>
+        assignment.sourceType === "component" ||
+        (typeof assignment.componentName === "string" &&
+          assignment.componentName.length > 0)
+    );
     const pageNames = [...new Set(
       keyAssignments
         .flatMap((assignment) =>
@@ -179,7 +188,9 @@ function buildInitialBuckets(
           ? pageNames[0]
           : pageNames.length > 1
             ? "common"
-            : keyAssignments[0]
+            : hasComponentReference && !hasPageReference
+              ? "common"
+              : keyAssignments[0]
               ? resolveBucketFromFile(keyAssignments[0].file, splitStrategy)
               : resolveBucketFromKey(key)
         : componentNames.length === 1
