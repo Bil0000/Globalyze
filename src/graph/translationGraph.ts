@@ -2,6 +2,11 @@ import path from "node:path";
 
 import fs from "fs-extra";
 
+import {
+  ensureGlobalyzeState,
+  getGlobalyzeStatePaths,
+  writeGlobalyzeProjectState
+} from "../state/globalyzeState";
 import type {
   LocaleKeyReference,
   ResolvedGlobalyzeConfig,
@@ -11,12 +16,8 @@ import { readLocaleEntries } from "../i18n/localeManager";
 import { buildLocaleFileContents } from "../i18n/writers/shared";
 import { resolveGlobalyzeRootDir, toRelativePosixPath } from "../utils/fileUtils";
 
-function getGraphPath(): string {
-  return path.join(
-    resolveGlobalyzeRootDir(),
-    ".globalyze",
-    "translationGraph.json"
-  );
+function getGraphPath(projectRoot?: string): string {
+  return getGlobalyzeStatePaths(projectRoot).translationGraphPath;
 }
 
 function getLegacyGraphPath(): string {
@@ -28,8 +29,11 @@ function getLegacyGraphPath(): string {
   );
 }
 
-export async function readTranslationGraph(): Promise<TranslationGraph> {
-  const graphPath = getGraphPath();
+export async function readTranslationGraph(
+  projectRoot?: string
+): Promise<TranslationGraph> {
+  await ensureGlobalyzeState(projectRoot);
+  const graphPath = getGraphPath(projectRoot);
 
   if (await fs.pathExists(graphPath)) {
     return (await fs.readJson(graphPath)) as TranslationGraph;
@@ -44,8 +48,12 @@ export async function readTranslationGraph(): Promise<TranslationGraph> {
   return (await fs.readJson(legacyGraphPath)) as TranslationGraph;
 }
 
-export async function writeTranslationGraph(graph: TranslationGraph): Promise<void> {
-  const graphPath = getGraphPath();
+export async function writeTranslationGraph(
+  graph: TranslationGraph,
+  projectRoot?: string
+): Promise<void> {
+  await ensureGlobalyzeState(projectRoot);
+  const graphPath = getGraphPath(projectRoot);
   await fs.ensureDir(path.dirname(graphPath));
   await fs.writeJson(graphPath, graph, { spaces: 2 });
   await fs.remove(getLegacyGraphPath());
@@ -127,12 +135,31 @@ export async function updateTranslationGraph(
       pageNames: pageNames.length > 1 ? pageNames : undefined,
       componentName: componentNames.length === 1 ? componentNames[0] : undefined,
       sourceType: sourceTypes.length === 1 ? sourceTypes[0] : undefined,
+      ownershipConfidence:
+        [...new Set(
+          keyReferences
+            .map((reference) => reference.ownershipConfidence)
+            .filter(
+              (
+                value
+              ): value is "high" | "learned" | "shared" | "unresolved" =>
+                value === "high" ||
+                value === "learned" ||
+                value === "shared" ||
+                value === "unresolved"
+            )
+        )][0],
       owner: sourceLocale[key]?.owner,
       locked: sourceLocale[key]?.locked,
       approvalRequired: sourceLocale[key]?.approvalRequired
     };
   }
 
-  await writeTranslationGraph(graph);
+  await writeTranslationGraph(graph, config.rootDir);
+  await writeGlobalyzeProjectState({
+    projectRoot: toRelativePosixPath("/", config.rootDir).startsWith("/")
+      ? config.rootDir
+      : path.resolve(config.rootDir)
+  }, config.rootDir);
   return graph;
 }

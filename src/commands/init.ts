@@ -15,6 +15,7 @@ import { logger } from "../utils/logger";
 import type {
   BuiltInI18nAdapter,
   LocaleStructureConfig,
+  LocaleFileFormat,
   TranslationGovernanceConfig
 } from "../types";
 
@@ -23,17 +24,20 @@ export async function promptLocaleStructure(): Promise<LocaleStructureConfig> {
     return DEFAULT_LOCALE_STRUCTURE;
   }
 
-  const format = await select({
+  const formatSelection = await select({
     message: "Select locale file format",
+    initialValue: "ts",
     options: [
-      { label: "JSON", value: "json" },
-      { label: "JavaScript", value: "js" }
+      { label: "TypeScript (.ts) (recommended)", value: "ts", hint: "typed const exports" },
+      { label: "JavaScript (.js)", value: "js", hint: "plain runtime files" },
+      { label: "JSON", value: "json" }
     ]
   });
 
-  if (isCancel(format)) {
+  if (isCancel(formatSelection)) {
     throw new GlobalyzeError("Locale structure setup was cancelled.");
   }
+  const format = formatSelection as LocaleFileFormat;
 
   const structure = await select({
     message: "Select locale structure",
@@ -53,7 +57,8 @@ export async function promptLocaleStructure(): Promise<LocaleStructureConfig> {
       structure,
       splitStrategy: "page",
       commonFile: false,
-      naming: "dot"
+      naming: "dot",
+      unresolvedOwnership: "common"
     };
   }
 
@@ -69,19 +74,20 @@ export async function promptLocaleStructure(): Promise<LocaleStructureConfig> {
     throw new GlobalyzeError("Locale structure setup was cancelled.");
   }
 
+  const extension = format === "json" ? "json" : format;
   const namingExample =
     splitStrategy === "component"
       ? {
-          dot: "pricing.component.js",
-          camel: "pricingComponent.js",
-          snake: "pricing_component.js",
-          kebab: "pricing-component.js"
+          dot: `pricing.component.${extension}`,
+          camel: `pricingComponent.${extension}`,
+          snake: `pricing_component.${extension}`,
+          kebab: `pricing-component.${extension}`
         }
       : {
-          dot: "pricing.page.js",
-          camel: "pricingPage.js",
-          snake: "pricing_page.js",
-          kebab: "pricing-page.js"
+          dot: `pricing.page.${extension}`,
+          camel: `pricingPage.${extension}`,
+          snake: `pricing_page.${extension}`,
+          kebab: `pricing-page.${extension}`
         };
 
   const naming = await select({
@@ -112,7 +118,8 @@ export async function promptLocaleStructure(): Promise<LocaleStructureConfig> {
     structure,
     splitStrategy,
     commonFile,
-    naming
+    naming,
+    unresolvedOwnership: "common"
   };
 }
 

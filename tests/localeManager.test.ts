@@ -34,7 +34,16 @@ describe("localeManager", () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locales-"));
     tempDirectories.push(rootDir);
 
-    const config = createTestConfig(rootDir);
+    const config = createTestConfig(rootDir, {
+      localeStructure: {
+        format: "json",
+        structure: "single",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "dot",
+        unresolvedOwnership: "common"
+      }
+    });
     const sourceLocale = buildSourceLocale([
       {
         key: "checkout.buy_button",
@@ -64,7 +73,16 @@ describe("localeManager", () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locales-"));
     tempDirectories.push(rootDir);
 
-    const config = createTestConfig(rootDir);
+    const config = createTestConfig(rootDir, {
+      localeStructure: {
+        format: "json",
+        structure: "single",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "dot",
+        unresolvedOwnership: "common"
+      }
+    });
 
     expect(ensureLocaleCoverageReady(config)).rejects.toThrow(
       new GlobalyzeError(
@@ -206,7 +224,8 @@ describe("localeManager", () => {
         structure: "multiple",
         splitStrategy: "component",
         commonFile: false,
-        naming: "dot"
+        naming: "dot",
+        unresolvedOwnership: "common"
       }
     });
     const appFilePath = path.join(rootDir, "src", "app", "page.tsx");

@@ -10,6 +10,7 @@ import {
   syncLocaleFiles
 } from "../i18n/localeManager";
 import { translateLocales } from "../lingo/lingoClient";
+import { refreshGeneratedTranslationManifests } from "../runtime/translationsManifest";
 import { transformFiles } from "../transformer/astTransformer";
 import type {
   GlobalyzeConfig,
@@ -194,6 +195,14 @@ export async function executeSyncCommand(
       }),
     () => `Updated locale files in ${config.localesDir}`
   );
+  const refreshedManifests = await logger.step(
+    "Refreshing generated translation manifests",
+    () => refreshGeneratedTranslationManifests(config),
+    (paths) =>
+      paths.length > 0
+        ? `Updated ${String(paths.length)} generated translation manifest${paths.length === 1 ? "" : "s"}`
+        : "No generated translation manifests were found"
+  );
   const references = await logger.step(
     "Refreshing translation graph",
     () =>
@@ -236,6 +245,9 @@ export async function executeSyncCommand(
   }
   if (localeSync.removed.length > 0) {
     logger.info(`Removed stale locales: ${localeSync.removed.join(", ")}`);
+  }
+  if (refreshedManifests.length > 0) {
+    logger.info(`Refreshed: ${refreshedManifests.join(", ")}`);
   }
   if (translation.skippedReason) {
     logger.info(translation.skippedReason);

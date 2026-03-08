@@ -4,6 +4,7 @@ import { prepareTransformProject } from "../cli/pipeline";
 import { extractTranslationKeyReferencesFromFiles } from "../extractor/translationKeyExtractor";
 import { updateTranslationGraph } from "../graph/translationGraph";
 import { buildSourceLocale, syncLocaleFiles } from "../i18n/localeManager";
+import { refreshGeneratedTranslationManifests } from "../runtime/translationsManifest";
 import { transformFiles } from "../transformer/astTransformer";
 import type { GlobalyzeConfig } from "../types";
 import { loadGlobalyzeConfig } from "../utils/fileUtils";
@@ -81,6 +82,14 @@ export async function executeTransformCommand(
       }),
     () => `Updated locale files in ${config.localesDir}`
   );
+  const refreshedManifests = await logger.step(
+    "Refreshing generated translation manifests",
+    () => refreshGeneratedTranslationManifests(config),
+    (paths) =>
+      paths.length > 0
+        ? `Updated ${String(paths.length)} generated translation manifest${paths.length === 1 ? "" : "s"}`
+        : "No generated translation manifests were found"
+  );
   const references = await extractTranslationKeyReferencesFromFiles(
     prepared.files,
     config.translationFunctionName
@@ -93,6 +102,9 @@ export async function executeTransformCommand(
 
   if (localeSync.created.length > 0) {
     logger.info(`Created locales: ${localeSync.created.join(", ")}`);
+  }
+  if (refreshedManifests.length > 0) {
+    logger.info(`Refreshed: ${refreshedManifests.join(", ")}`);
   }
   if (localeSync.removed.length > 0) {
     logger.info(`Removed stale locales: ${localeSync.removed.join(", ")}`);

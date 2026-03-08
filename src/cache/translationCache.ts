@@ -2,16 +2,13 @@ import path from "node:path";
 
 import fs from "fs-extra";
 
+import { ensureGlobalyzeState, getGlobalyzeStatePaths } from "../state/globalyzeState";
 import { resolveGlobalyzeRootDir } from "../utils/fileUtils";
 
 type TranslationCacheData = Record<string, Record<string, string>>;
 
-function getCachePath(): string {
-  return path.join(
-    resolveGlobalyzeRootDir(),
-    ".globalyze",
-    "translations.json"
-  );
+function getCachePath(projectRoot?: string): string {
+  return getGlobalyzeStatePaths(projectRoot).translationsCachePath;
 }
 
 function getLegacyCachePath(): string {
@@ -23,8 +20,11 @@ function getLegacyCachePath(): string {
   );
 }
 
-export async function readTranslationCache(): Promise<TranslationCacheData> {
-  const cachePath = getCachePath();
+export async function readTranslationCache(
+  projectRoot?: string
+): Promise<TranslationCacheData> {
+  await ensureGlobalyzeState(projectRoot);
+  const cachePath = getCachePath(projectRoot);
 
   if (await fs.pathExists(cachePath)) {
     const parsed = (await fs.readJson(cachePath)) as unknown;
@@ -52,9 +52,11 @@ export async function readTranslationCache(): Promise<TranslationCacheData> {
 }
 
 export async function writeTranslationCache(
-  cache: TranslationCacheData
+  cache: TranslationCacheData,
+  projectRoot?: string
 ): Promise<void> {
-  const cachePath = getCachePath();
+  await ensureGlobalyzeState(projectRoot);
+  const cachePath = getCachePath(projectRoot);
   await fs.ensureDir(path.dirname(cachePath));
   await fs.writeJson(cachePath, cache, { spaces: 2 });
   await fs.remove(getLegacyCachePath());
@@ -62,9 +64,10 @@ export async function writeTranslationCache(
 
 export async function getCachedTranslations(
   sourceLocale: Record<string, string>,
-  language: string
+  language: string,
+  projectRoot?: string
 ): Promise<{ translations: Record<string, string>; hits: number }> {
-  const cache = await readTranslationCache();
+  const cache = await readTranslationCache(projectRoot);
   const translations: Record<string, string> = {};
   let hits = 0;
 
@@ -86,9 +89,10 @@ export async function getCachedTranslations(
 export async function storeCachedTranslations(
   sourceLocale: Record<string, string>,
   language: string,
-  translatedLocale: Record<string, string>
+  translatedLocale: Record<string, string>,
+  projectRoot?: string
 ): Promise<number> {
-  const cache = await readTranslationCache();
+  const cache = await readTranslationCache(projectRoot);
   let writes = 0;
 
   for (const [key, sourceText] of Object.entries(sourceLocale)) {
@@ -105,6 +109,6 @@ export async function storeCachedTranslations(
     writes += 1;
   }
 
-  await writeTranslationCache(cache);
+  await writeTranslationCache(cache, projectRoot);
   return writes;
 }

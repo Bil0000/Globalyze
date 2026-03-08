@@ -31,11 +31,12 @@ export const DEFAULT_IGNORE = [
 ];
 
 export const DEFAULT_LOCALE_STRUCTURE: LocaleStructureConfig = {
-  format: "json",
+  format: "ts",
   structure: "single",
   splitStrategy: "page",
   commonFile: false,
-  naming: "dot"
+  naming: "dot",
+  unresolvedOwnership: "common"
 };
 
 const DEFAULT_CONFIG: Omit<ResolvedGlobalyzeConfig, "rootDir" | "sourceDir" | "localesDir"> =
@@ -136,6 +137,7 @@ function formatLocaleStructure(value: LocaleStructureConfig): string {
     `    splitStrategy: ${quoteString(value.splitStrategy)},`,
     `    commonFile: ${value.commonFile ? "true" : "false"},`,
     `    naming: ${quoteString(value.naming)},`,
+    `    unresolvedOwnership: ${quoteString(value.unresolvedOwnership)},`,
     "  }"
   ].join("\n");
 }
@@ -179,7 +181,8 @@ function normalizeLocaleStructure(input: unknown): LocaleStructureConfig {
     return { ...DEFAULT_LOCALE_STRUCTURE };
   }
 
-  const format = input.format === "js" ? "js" : "json";
+  const format =
+    input.format === "json" ? "json" : input.format === "js" ? "js" : "ts";
   const structure = input.structure === "multiple" ? "multiple" : "single";
   const splitStrategy =
     input.splitStrategy === "component" ? "component" : "page";
@@ -191,15 +194,24 @@ function normalizeLocaleStructure(input: unknown): LocaleStructureConfig {
       : input.naming === "snake"
         ? "snake"
         : input.naming === "kebab"
-          ? "kebab"
+        ? "kebab"
           : "dot";
+  const unresolvedOwnership =
+    structure === "multiple" && splitStrategy === "page"
+      ? input.unresolvedOwnership === "file"
+        ? "file"
+        : input.unresolvedOwnership === "page"
+          ? "page"
+          : "common"
+      : "common";
 
   return {
     format,
     structure,
     splitStrategy,
     commonFile,
-    naming
+    naming,
+    unresolvedOwnership
   };
 }
 
@@ -335,10 +347,11 @@ function assertOptionalLocaleStructure(
   if (
     value.format !== undefined &&
     value.format !== "json" &&
-    value.format !== "js"
+    value.format !== "js" &&
+    value.format !== "ts"
   ) {
     throw new GlobalyzeError(
-      `Config at ${configPath} has an invalid "localeStructure.format" value. Expected "json" or "js".`
+      `Config at ${configPath} has an invalid "localeStructure.format" value. Expected "json", "js", or "ts".`
     );
   }
 
@@ -380,6 +393,17 @@ function assertOptionalLocaleStructure(
   ) {
     throw new GlobalyzeError(
       `Config at ${configPath} has an invalid "localeStructure.naming" value. Expected "dot", "camel", "snake", or "kebab".`
+    );
+  }
+
+  if (
+    value.unresolvedOwnership !== undefined &&
+    value.unresolvedOwnership !== "common" &&
+    value.unresolvedOwnership !== "file" &&
+    value.unresolvedOwnership !== "page"
+  ) {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "localeStructure.unresolvedOwnership" value. Expected "common", "file", or "page".`
     );
   }
 }

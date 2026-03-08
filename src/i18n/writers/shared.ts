@@ -43,6 +43,10 @@ function camelCase(value: string): string {
     .join("");
 }
 
+export function buildJsLocaleExportName(fileName: string): string {
+  return camelCase(fileName.replace(/\.[^.]+$/, "")) || "locale";
+}
+
 function pascalCase(value: string): string {
   const output = camelCase(value);
 
@@ -144,10 +148,11 @@ function resolveBucketFromKey(key: string): string {
 function buildInitialBuckets(
   sourceLocale: LocaleEntryDictionary,
   assignments: readonly LocaleKeyReference[] | undefined,
-  splitStrategy: LocaleStructureConfig["splitStrategy"]
+  structure: LocaleStructureConfig
 ): Map<string, string[]> {
   const assignmentMap = buildAssignmentMap(assignments);
   const buckets = new Map<string, string[]>();
+  const splitStrategy = structure.splitStrategy;
 
   for (const key of Object.keys(sourceLocale).sort((left, right) =>
     left.localeCompare(right)
@@ -182,6 +187,8 @@ function buildInitialBuckets(
         .map((value) => slugifySegment(value))
         .filter(Boolean)
     )];
+    const unresolvedStrategy =
+      keyAssignments[0]?.unresolvedOwnership ?? structure.unresolvedOwnership;
     const bucket =
       splitStrategy === "page"
         ? pageNames.length === 1
@@ -189,7 +196,13 @@ function buildInitialBuckets(
           : pageNames.length > 1
             ? "common"
             : hasComponentReference && !hasPageReference
-              ? "common"
+              ? unresolvedStrategy === "file"
+                ? "unresolved"
+                : unresolvedStrategy === "page"
+                  ? keyAssignments[0]
+                    ? resolveBucketFromFile(keyAssignments[0].file, splitStrategy)
+                    : resolveBucketFromKey(key)
+                  : "common"
               : keyAssignments[0]
               ? resolveBucketFromFile(keyAssignments[0].file, splitStrategy)
               : resolveBucketFromKey(key)
@@ -297,7 +310,7 @@ export function buildLocaleFileContents(
   const initialBuckets = buildInitialBuckets(
     sourceLocale,
     assignments,
-    structure.splitStrategy
+    structure
   );
   const buckets = structure.commonFile
     ? moveRepeatedValuesToCommon(initialBuckets, sourceLocale)
@@ -353,7 +366,21 @@ function formatJson(entries: LocaleEntryDictionary): string {
 }
 
 function formatJs(entries: LocaleEntryDictionary, fileName: string): string {
-  const exportName = camelCase(fileName.replace(/\.[^.]+$/, "")) || "locale";
+  const exportName = buildJsLocaleExportName(fileName);
+  const sorted = Object.fromEntries(
+    Object.entries(entries)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => [key, serializeLocaleEntry(value)])
+  );
+
+  return [
+    `export const ${exportName} = ${JSON.stringify(sorted, null, 2)};`,
+    ""
+  ].join("\n");
+}
+
+function formatTs(entries: LocaleEntryDictionary, fileName: string): string {
+  const exportName = buildJsLocaleExportName(fileName);
   const sorted = Object.fromEntries(
     Object.entries(entries)
       .sort(([left], [right]) => left.localeCompare(right))
@@ -379,7 +406,9 @@ export async function writeLocaleFiles(
     const contents =
       format === "json"
         ? formatJson(file.entries)
-        : formatJs(file.entries, file.fileName);
+        : format === "ts"
+          ? formatTs(file.entries, file.fileName)
+          : formatJs(file.entries, file.fileName);
     await fs.writeFile(filePath, contents, "utf8");
   }
 }
@@ -462,6 +491,7 @@ export function parseJsLocaleModule(
     plugins: ["typescript"]
   });
   let extracted: LocaleEntryDictionary = {};
+  let exportCount = 0;
 
   traverse(ast, {
     ExportNamedDeclaration(path) {
@@ -488,6 +518,7 @@ export function parseJsLocaleModule(
           if (!objectNode) {
             continue;
           }
+          exportCount += 1;
           extracted = {
             ...extracted,
             ...parseObjectExpression(objectNode)
@@ -497,7 +528,7 @@ export function parseJsLocaleModule(
     }
   });
 
-  if (Object.keys(extracted).length === 0) {
+  if (exportCount === 0) {
     throw new GlobalyzeError(`Failed to parse locale JS module at ${filePath}.`);
   }
 

@@ -121,7 +121,9 @@ export function extractTranslationKeyReferencesFromSource(
       pageName: metadata?.pageName,
       pageNames: metadata?.pageNames,
       componentName: metadata?.componentName,
-      sourceType: metadata?.sourceType
+      sourceType: metadata?.sourceType,
+      ownershipConfidence: metadata?.ownershipConfidence,
+      unresolvedOwnership: metadata?.unresolvedOwnership
     }));
 }
 

@@ -121,6 +121,8 @@ export function extractDynamicStringsFromSource(
     metadata?.componentName ?? resolveComponentName(filePath, source);
   const pageName = metadata?.pageName ?? resolvePageName(filePath) ?? undefined;
   const pageNames = metadata?.pageNames;
+  const ownershipConfidence = metadata?.ownershipConfidence;
+  const unresolvedOwnership = metadata?.unresolvedOwnership;
   const candidates: DynamicExtractionCandidate[] = [];
 
   traverse(ast, {
@@ -149,6 +151,8 @@ export function extractDynamicStringsFromSource(
         componentName,
         pageName,
         pageNames,
+        ownershipConfidence,
+        unresolvedOwnership,
         elementType:
           path.parentPath.isJSXElement() &&
           t.isJSXIdentifier(path.parentPath.node.openingElement.name)

@@ -10,6 +10,7 @@ import {
   syncLocaleFiles
 } from "../i18n/localeManager";
 import { translateLocales } from "../lingo/lingoClient";
+import { refreshGeneratedTranslationManifests } from "../runtime/translationsManifest";
 import { transformFiles } from "../transformer/astTransformer";
 import type {
   ExtractedString,
@@ -86,6 +87,7 @@ export async function processWatchUpdate(
       sourceAssignments: prepared.sourceAssignments
     }
   );
+  await refreshGeneratedTranslationManifests(config);
   let translation: TranslationResult | undefined;
 
   if (newStrings.length > 0 && localeSync.sourceKeyCount > 0) {

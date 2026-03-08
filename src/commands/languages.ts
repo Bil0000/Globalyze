@@ -5,6 +5,7 @@ import { Command } from "commander";
 import { prepareTransformProject } from "../cli/pipeline";
 import { buildSourceLocale, syncLocaleFiles } from "../i18n/localeManager";
 import { translateLocales } from "../lingo/lingoClient";
+import { refreshGeneratedTranslationManifests } from "../runtime/translationsManifest";
 import type { TranslationResult } from "../types";
 import { transformFiles } from "../transformer/astTransformer";
 import {
@@ -110,6 +111,14 @@ export async function executeAddLanguagesCommand(
         ? `Generated locale files for ${addedLanguages.join(", ")} from transformed source`
         : `Added locale support for ${addedLanguages.join(", ")}`
   );
+  const refreshedManifests = await logger.step(
+    "Refreshing generated translation manifests",
+    () => refreshGeneratedTranslationManifests(nextConfig),
+    (paths) =>
+      paths.length > 0
+        ? `Updated ${String(paths.length)} generated translation manifest${paths.length === 1 ? "" : "s"}`
+        : "No generated translation manifests were found"
+  );
   let translation: TranslationResult | undefined;
 
   if (localeSync.sourceKeyCount > 0) {
@@ -128,6 +137,9 @@ export async function executeAddLanguagesCommand(
       translation.skippedReason ??
         "English source values were copied to target locales."
     );
+  }
+  if (refreshedManifests.length > 0) {
+    logger.info(`Refreshed: ${refreshedManifests.join(", ")}`);
   }
 
   logger.success(`Languages configured: ${nextLanguages.join(", ")}`);

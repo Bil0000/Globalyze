@@ -119,7 +119,7 @@ export async function translateLocales(
   for (const language of targetLanguages) {
     try {
       const cached = config.cacheTranslations
-        ? await getCachedTranslations(sourceLocale, language)
+        ? await getCachedTranslations(sourceLocale, language, config.rootDir)
         : { translations: {}, hits: 0 };
       cacheHits += cached.hits;
       const pendingSourceLocale = Object.fromEntries(
@@ -156,7 +156,8 @@ export async function translateLocales(
         cacheWrites += await storeCachedTranslations(
           sourceLocale,
           language,
-          coerceTranslatedLocale(mergedTranslatedLocale, sourceLocale)
+          coerceTranslatedLocale(mergedTranslatedLocale, sourceLocale),
+          config.rootDir
         );
       }
     } catch (error) {

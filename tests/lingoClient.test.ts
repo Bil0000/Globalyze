@@ -124,7 +124,8 @@ describe("translateLocales", () => {
         structure: "multiple",
         splitStrategy: "component",
         commonFile: false,
-        naming: "dot"
+        naming: "dot",
+        unresolvedOwnership: "common"
       }
     });
 

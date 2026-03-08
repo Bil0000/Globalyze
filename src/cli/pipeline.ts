@@ -46,6 +46,7 @@ export async function collectProjectStrings(
     componentName: item.componentName,
     pageName: item.pageName,
     pageNames: item.pageNames,
+    ownershipConfidence: item.ownershipConfidence,
     elementType: item.elementType,
     interpolation: item.variables
   }));
@@ -90,6 +91,7 @@ export async function prepareTransformProject(
     componentName: item.componentName,
     pageName: item.pageName,
     pageNames: item.pageNames,
+    ownershipConfidence: item.ownershipConfidence,
     elementType: item.elementType,
     interpolation: item.variables
   }));

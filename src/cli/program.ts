@@ -1,6 +1,7 @@
 import { Command } from "commander";
 
 import { registerChangeStyleCommand } from "../commands/changeStyle";
+import { registerClassifyCommand } from "../commands/classify";
 import { registerCleanCommand } from "../commands/clean";
 import { registerDoctorCommand } from "../commands/doctor";
 import { registerDuplicatesCommand } from "../commands/duplicates";
@@ -57,6 +58,7 @@ export function buildProgram(version: string): Command {
       "Inspection Commands:",
       "  inspect        Inspect a translation key",
       "  graph          View translation graph summary",
+      "  classify       Inspect or fix ownership classification",
       "  where          Show where a key is used",
       "  locales        Inspect locale files",
       "  search         Search translations by text",
@@ -83,6 +85,7 @@ export function buildProgram(version: string): Command {
   registerScanCommand(program);
   registerInspectCommand(program);
   registerGraphCommand(program);
+  registerClassifyCommand(program);
   registerWhereCommand(program);
   registerLocalesCommand(program);
   registerSearchCommand(program);

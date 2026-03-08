@@ -13,13 +13,18 @@ import { scanProjectFiles } from "../scanner/projectScanner";
 import type {
   LocaleInspectionFile,
   LocalizationDoctorReport,
+  OwnershipVerificationEntry,
+  OwnershipVerificationReport,
   ResolvedGlobalyzeConfig,
   TranslationGraphSummary,
   TranslationInspectionResult,
   TranslationSearchMatch
 } from "../types";
-import { resolveNameMetadata } from "../utils/nameResolver";
-import { toRelativePosixPath } from "../utils/fileUtils";
+import {
+  buildFileLocalizationMetadata,
+  resolveNameMetadata
+} from "../utils/nameResolver";
+import { toPosixPath, toRelativePosixPath } from "../utils/fileUtils";
 
 function buildLocaleFileLabel(
   config: ResolvedGlobalyzeConfig,
@@ -128,7 +133,7 @@ export async function inspectTranslationKey(
   config: ResolvedGlobalyzeConfig,
   key: string
 ): Promise<TranslationInspectionResult | null> {
-  const graph = await readTranslationGraph();
+  const graph = await readTranslationGraph(config.rootDir);
   const sourceEntries = await readLocaleEntries(config, config.sourceLocale);
   const graphEntry = graph[key];
   const sourceEntry = sourceEntries[key];
@@ -159,7 +164,7 @@ export async function summarizeTranslationGraph(
     component?: string;
   } = {}
 ): Promise<TranslationGraphSummary> {
-  const graph = await readTranslationGraph();
+  const graph = await readTranslationGraph(config.rootDir);
   const pageCounts = new Map<string, number>();
   const componentCounts = new Map<string, number>();
   const matchingKeys: string[] = [];
@@ -224,9 +229,10 @@ export async function summarizeTranslationGraph(
 }
 
 export async function findTranslationKeyUsages(
-  key: string
+  key: string,
+  projectRoot?: string
 ): Promise<string[] | null> {
-  const graph = await readTranslationGraph();
+  const graph = await readTranslationGraph(projectRoot);
   const entry = graph[key];
 
   if (!entry) {
@@ -264,7 +270,7 @@ export async function searchTranslations(
   text: string
 ): Promise<TranslationSearchMatch[]> {
   const sourceEntries = await readLocaleEntries(config, config.sourceLocale);
-  const graph = await readTranslationGraph();
+  const graph = await readTranslationGraph(config.rootDir);
   const query = text.trim().toLowerCase();
   const matches = new Map<string, TranslationSearchMatch>();
 
@@ -328,5 +334,56 @@ export async function buildLocalizationDoctorReport(
     approvalRequiredChanges: 0,
     localeStructureLabel: describeLocaleStructure(config),
     languages: config.languages
+  };
+}
+
+export async function verifyOwnershipAssignments(
+  config: ResolvedGlobalyzeConfig
+): Promise<OwnershipVerificationReport> {
+  const files = await scanProjectFiles(config);
+  const metadata = await buildFileLocalizationMetadata(files);
+  const entries: OwnershipVerificationEntry[] = [];
+
+  for (const filePath of files) {
+    const value = metadata.get(toPosixPath(path.resolve(filePath)));
+
+    if (!value || value.sourceType === "page") {
+      continue;
+    }
+
+    const pageNames =
+      value.pageNames && value.pageNames.length > 0
+        ? value.pageNames
+        : value.pageName
+          ? [value.pageName]
+          : undefined;
+    const status: OwnershipVerificationEntry["status"] =
+      value.ownershipConfidence === "high"
+        ? "route-owned"
+        : value.ownershipConfidence === "learned"
+          ? "learned"
+          : value.ownershipConfidence === "shared"
+            ? "shared"
+            : "unresolved";
+
+    entries.push({
+      file: toRelativePosixPath(config.rootDir, filePath),
+      componentName: value.componentName,
+      pageName: value.pageName,
+      pageNames,
+      status
+    });
+  }
+
+  entries.sort((left, right) => left.file.localeCompare(right.file));
+
+  return {
+    totalFiles: files.length,
+    totalPages: [...metadata.values()].filter((item) => item.sourceType === "page").length,
+    totalComponents: entries.length,
+    routeOwned: entries.filter((entry) => entry.status === "route-owned"),
+    learned: entries.filter((entry) => entry.status === "learned"),
+    shared: entries.filter((entry) => entry.status === "shared"),
+    unresolved: entries.filter((entry) => entry.status === "unresolved")
   };
 }

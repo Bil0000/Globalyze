@@ -38,7 +38,8 @@ describe("locale file structures", () => {
         structure: "single",
         splitStrategy: "page",
         commonFile: false,
-        naming: "dot"
+        naming: "dot",
+        unresolvedOwnership: "common"
       }
     });
 
@@ -76,7 +77,8 @@ describe("locale file structures", () => {
         structure: "multiple",
         splitStrategy: "page",
         commonFile: true,
-        naming: "dot"
+        naming: "dot",
+        unresolvedOwnership: "common"
       }
     });
     const assignments = [
@@ -127,7 +129,7 @@ describe("locale file structures", () => {
     expect(profileLocale).not.toContain('"profile.save"');
   });
 
-  it("writes single JS locale files with const exports", async () => {
+  it("writes single JS locale files with plain JavaScript exports", async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locale-style-"));
     tempDirectories.push(rootDir);
 
@@ -137,7 +139,8 @@ describe("locale file structures", () => {
         structure: "single",
         splitStrategy: "page",
         commonFile: false,
-        naming: "dot"
+        naming: "dot",
+        unresolvedOwnership: "common"
       }
     });
 
@@ -159,12 +162,49 @@ describe("locale file structures", () => {
 
     expect(englishLocale).toContain("export const en =");
     expect(englishLocale).toContain('"checkout.buy_button": "Buy now"');
+    expect(englishLocale).not.toContain("as const");
     expect(await readLocaleDictionary(config, "en")).toEqual({
       "checkout.buy_button": "Buy now"
     });
   });
 
-  it("writes multiple JS locale files by component", async () => {
+  it("writes single TS locale files with const exports", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locale-style-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      localeStructure: {
+        format: "ts",
+        structure: "single",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "dot",
+        unresolvedOwnership: "common"
+      }
+    });
+
+    await syncLocaleFiles(
+      config,
+      buildSourceLocale([
+        {
+          key: "checkout.buy_button",
+          text: "Buy now",
+          file: "src/checkout/page.tsx"
+        }
+      ])
+    );
+
+    const englishLocale = await readFile(
+      path.join(rootDir, "locales", "en", "en.ts"),
+      "utf8"
+    );
+
+    expect(englishLocale).toContain("export const en =");
+    expect(englishLocale).toContain('"checkout.buy_button": "Buy now"');
+    expect(englishLocale).toContain("as const");
+  });
+
+  it("writes multiple JS locale files by component with plain JavaScript exports", async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locale-style-"));
     tempDirectories.push(rootDir);
 
@@ -174,7 +214,8 @@ describe("locale file structures", () => {
         structure: "multiple",
         splitStrategy: "component",
         commonFile: false,
-        naming: "camel"
+        naming: "camel",
+        unresolvedOwnership: "common"
       }
     });
     const assignments = [
@@ -205,8 +246,10 @@ describe("locale file structures", () => {
 
     expect(headerLocale).toContain("export const headerComponent =");
     expect(headerLocale).toContain('"header.title": "Dashboard"');
+    expect(headerLocale).not.toContain("as const");
     expect(cartLocale).toContain("export const cartComponent =");
     expect(cartLocale).toContain('"cart.checkout": "Checkout"');
+    expect(cartLocale).not.toContain("as const");
   });
 
   it("writes multiple JSON locale files with snake_case naming", async () => {
@@ -219,7 +262,8 @@ describe("locale file structures", () => {
         structure: "multiple",
         splitStrategy: "page",
         commonFile: false,
-        naming: "snake"
+        naming: "snake",
+        unresolvedOwnership: "common"
       }
     });
 
@@ -253,7 +297,8 @@ describe("locale file structures", () => {
         structure: "multiple",
         splitStrategy: "page",
         commonFile: false,
-        naming: "camel"
+        naming: "camel",
+        unresolvedOwnership: "common"
       }
     });
 
@@ -361,7 +406,8 @@ describe("locale file structures", () => {
         structure: "multiple",
         splitStrategy: "page",
         commonFile: false,
-        naming: "camel"
+        naming: "camel",
+        unresolvedOwnership: "common"
       }
     });
 
@@ -441,11 +487,21 @@ describe("locale file structures", () => {
           structure: "single",
           splitStrategy: "page",
           commonFile: false,
-          naming: "dot"
+          naming: "dot",
+          unresolvedOwnership: "common"
         }
       });
 
-      const baseConfig = createTestConfig(rootDir);
+      const baseConfig = createTestConfig(rootDir, {
+        localeStructure: {
+          format: "json",
+          structure: "single",
+          splitStrategy: "page",
+          commonFile: false,
+          naming: "dot",
+          unresolvedOwnership: "common"
+        }
+      });
       await syncLocaleFiles(baseConfig, {
         "checkout.buy_button": "Buy now",
         "support.contact_button": "Contact support"
@@ -460,7 +516,8 @@ describe("locale file structures", () => {
         structure: "multiple",
         splitStrategy: "page",
         commonFile: false,
-        naming: "dot"
+        naming: "dot",
+        unresolvedOwnership: "common"
       };
 
       await executeChangeStyleCommand({
@@ -497,5 +554,85 @@ describe("locale file structures", () => {
     } finally {
       process.chdir(originalCwd);
     }
+  });
+
+  it("routes unresolved page ownership into an unresolved file when configured", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locale-style-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      localeStructure: {
+        format: "js",
+        structure: "multiple",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "camel",
+        unresolvedOwnership: "file"
+      }
+    });
+
+    await syncLocaleFiles(
+      config,
+      {
+        "lang_picker.title": "Choose language"
+      },
+      {
+        sourceAssignments: [
+          {
+            key: "lang_picker.title",
+            file: "src/components/LangPicker.tsx",
+            componentName: "langPicker",
+            sourceType: "component"
+          }
+        ]
+      }
+    );
+
+    const unresolvedLocale = await readFile(
+      path.join(rootDir, "locales", "en", "unresolvedPage.js"),
+      "utf8"
+    );
+
+    expect(unresolvedLocale).toContain('"lang_picker.title": "Choose language"');
+  });
+
+  it("keeps unresolved page ownership in standalone page-style buckets when configured", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locale-style-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      localeStructure: {
+        format: "json",
+        structure: "multiple",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "camel",
+        unresolvedOwnership: "page"
+      }
+    });
+
+    await syncLocaleFiles(
+      config,
+      {
+        "lang_picker.title": "Choose language"
+      },
+      {
+        sourceAssignments: [
+          {
+            key: "lang_picker.title",
+            file: "src/components/LangPicker.tsx",
+            componentName: "langPicker",
+            sourceType: "component"
+          }
+        ]
+      }
+    );
+
+    const pageLikeLocale = await readFile(
+      path.join(rootDir, "locales", "en", "langpickerPage.json"),
+      "utf8"
+    );
+
+    expect(pageLikeLocale).toContain('"lang_picker.title": "Choose language"');
   });
 });

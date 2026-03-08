@@ -87,6 +87,8 @@ export function extractStringsFromSource(
     metadata?.componentName ?? resolveComponentName(filePath, source);
   const pageName = metadata?.pageName ?? resolvePageName(filePath) ?? undefined;
   const pageNames = metadata?.pageNames;
+  const ownershipConfidence = metadata?.ownershipConfidence;
+  const unresolvedOwnership = metadata?.unresolvedOwnership;
 
   function resolveElementType(path: {
     parentPath: {
@@ -131,6 +133,8 @@ export function extractStringsFromSource(
         componentName,
         pageName,
         pageNames,
+        ownershipConfidence,
+        unresolvedOwnership,
         elementType: resolveElementType(path)
       });
     },
@@ -163,6 +167,8 @@ export function extractStringsFromSource(
         componentName,
         pageName,
         pageNames,
+        ownershipConfidence,
+        unresolvedOwnership,
         elementType: resolveElementType(path)
       });
     },
@@ -200,6 +206,8 @@ export function extractStringsFromSource(
         componentName,
         pageName,
         pageNames,
+        ownershipConfidence,
+        unresolvedOwnership,
         elementType:
           t.isJSXOpeningElement(path.parentPath.node) &&
           t.isJSXIdentifier(path.parentPath.node.name)

@@ -57,6 +57,7 @@ Generated locale entry:
 - Caches translated strings in `.globalyze/translations.json`
 - Falls back to English values when translation credentials or network access are unavailable
 - Tracks key usage, origin metadata, and governance metadata in `.globalyze/translationGraph.json`
+- Bootstraps `.globalyze/` automatically on first command run
 - Supports runtime adapters for generic/custom runtimes, `react-i18next`, `next-intl`, and `react-intl`
 - Separates one-time migration (`globalize`) from ongoing maintenance (`sync`)
 - Supports translation ownership, locking, and approval-aware governance workflows
@@ -204,6 +205,8 @@ Globalyze supports:
 
 For semantic key generation, Globalyze rotates through all configured OpenAI keys first. If every OpenAI key is rate-limited, it rotates through all configured Gemini keys. If both pools are exhausted, it falls back to deterministic keys for that run.
 
+When you run any Globalyze command, the CLI bootstraps `.globalyze/` automatically if it does not already exist. That state directory contains the translation graph and translation cache used by inspection, sync, and learning-based ownership reuse.
+
 Behavior when keys are missing:
 
 - No OpenAI keys configured: Globalyze uses deterministic fallback keys
@@ -303,6 +306,25 @@ checkout.page
 ├ checkout.title
 ├ checkout.pay_button
 └ checkout.cancel
+```
+
+### `globalyze classify`
+
+Inspects per-page ownership for component files and reports which assignments are:
+
+- route-owned
+- learned from existing generated state
+- shared across routes
+- unresolved and likely headed for `common.*`
+
+```bash
+globalyze classify
+```
+
+To record decisions for unresolved files:
+
+```bash
+globalyze classify --fix
 ```
 
 ### `globalyze where <key>`
@@ -520,11 +542,12 @@ export default {
   languages: ["en", "ar", "fr", "de"],
   ignore: ["node_modules", "dist", "build", ".next", ".git"],
   localeStructure: {
-    format: "json",
+    format: "ts",
     structure: "single",
     splitStrategy: "page",
     commonFile: false,
-    naming: "dot"
+    naming: "dot",
+    unresolvedOwnership: "common"
   },
   cacheTranslations: true,
   dynamicExtraction: false,
@@ -554,7 +577,8 @@ export default {
 - `localesDir`: directory where per-language locale folders are stored
 - `languages`: supported locales
 - `ignore`: ignored directories
-- `localeStructure`: file format, layout, and multi-file naming convention for locale output
+- `localeStructure`: file format (`json`, `js`, or `ts`), layout, and multi-file naming convention for locale output
+- `localeStructure.unresolvedOwnership`: in multi-file page mode, choose whether unresolved ownership goes to `common`, `unresolved`, or standalone page-like files
 - `cacheTranslations`: persist and reuse translated strings from `.globalyze/translations.json`
 - `dynamicExtraction`: enable extraction and transformation of interpolated JSX strings
 - `i18nAdapter`: choose a built-in runtime adapter or stay generic/custom
@@ -726,6 +750,12 @@ Supported multi-file naming conventions:
 - `snake`: `pricing_page.js`
 - `kebab`: `pricing-page.js`
 
+When `splitStrategy` is `page`, unresolved ownership can be configured as:
+
+- `common`: move unresolved entries into `common.*`
+- `file`: place unresolved entries into `unresolved.*`
+- `page`: keep unresolved entries in standalone page-like buckets
+
 Component-based:
 
 ```text
@@ -744,7 +774,23 @@ locales/
   fr/fr.js
 ```
 
-JavaScript locale files export typed constants:
+JavaScript locale files export plain JavaScript objects:
+
+```js
+export const en = {
+  "checkout.buy_button": "Buy now"
+};
+```
+
+### Single TypeScript
+
+```text
+locales/
+  en/en.ts
+  fr/fr.ts
+```
+
+TypeScript locale files export typed constants:
 
 ```ts
 export const en = {
@@ -761,9 +807,20 @@ locales/
     common.js
 ```
 
+### Multiple TypeScript
+
+```text
+locales/
+  en/
+    checkout.page.ts
+    common.ts
+```
+
 ### Common Files
 
 When `localeStructure.structure` is `multiple` and `commonFile` is `true`, Globalyze moves repeated values shared across pages or components into `common.json` or `common.js`.
+
+`globalyze init` now defaults to TypeScript locale files when you choose a code-based locale format.
 
 ### Changing Style Later
 

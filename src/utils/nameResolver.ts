@@ -5,7 +5,12 @@ import traverse from "@babel/traverse";
 import * as t from "@babel/types";
 import ts from "typescript";
 
-import type { ResolvedNameMetadata } from "../types";
+import { readTranslationGraph } from "../graph/translationGraph";
+import { readGlobalyzeProjectState } from "../state/globalyzeState";
+import type {
+  LocaleUnresolvedOwnershipStrategy,
+  ResolvedNameMetadata
+} from "../types";
 
 const NON_ROUTE_SEGMENTS = new Set([
   "components",
@@ -18,6 +23,16 @@ const NON_ROUTE_SEGMENTS = new Set([
   "utils",
   "providers",
   "context"
+]);
+
+const SHARED_PATH_SEGMENTS = new Set([
+  "ui",
+  "hooks",
+  "lib",
+  "config",
+  "scripts",
+  "stores",
+  "data_table"
 ]);
 
 function toPosix(filePath: string): string {
@@ -58,6 +73,19 @@ function isLikelySupportPath(segments: readonly string[]): boolean {
   return segments.some((segment) => NON_ROUTE_SEGMENTS.has(slugify(segment)));
 }
 
+function isConventionallySharedComponent(filePath: string): boolean {
+  const normalized = toPosix(filePath);
+  const segments = normalized.split("/").filter(Boolean).map((segment) => slugify(segment));
+  const srcIndex = segments.lastIndexOf("src");
+  const relevant = srcIndex >= 0 ? segments.slice(srcIndex + 1) : segments;
+
+  if (relevant[0] === "components" && relevant[1] && SHARED_PATH_SEGMENTS.has(relevant[1])) {
+    return true;
+  }
+
+  return relevant.some((segment) => SHARED_PATH_SEGMENTS.has(segment));
+}
+
 export function resolvePageName(filePath: string): string | null {
   const normalized = toPosix(filePath);
   const segments = normalized.split("/").filter(Boolean);
@@ -92,16 +120,19 @@ export function resolvePageName(filePath: string): string | null {
 
   if (appIndex >= 0) {
     if (routesIndex < 0) {
-      if (!["page", "layout"].includes(baseName)) {
+      if (!["page", "layout", "not_found"].includes(baseName)) {
         return null;
       }
 
       const relevant = normalizeSegments(segments.slice(appIndex + 1));
       const filtered = relevant.filter(
-        (segment) => segment !== "page" && segment !== "layout"
+        (segment) =>
+          segment !== "page" &&
+          segment !== "layout" &&
+          segment !== "not_found"
       );
 
-      return filtered.at(-1) ?? "home";
+      return baseName === "not_found" ? "not_found" : filtered.at(-1) ?? "home";
     }
   }
 
@@ -280,6 +311,68 @@ function deriveProjectRoots(sourceRoots: readonly string[]): string[] {
   return [...roots];
 }
 
+function inferNearestAppRouteOwnerFromPath(
+  filePath: string,
+  knownFiles: Set<string>
+): string | null {
+  const absoluteFilePath = path.resolve(filePath);
+  const absoluteSegments = absoluteFilePath.split(path.sep).filter(Boolean);
+  const appIndex = absoluteSegments.lastIndexOf("app");
+
+  if (appIndex < 0) {
+    return null;
+  }
+
+  let currentDirectory = path.dirname(absoluteFilePath);
+  const appDirectory = path.join(
+    path.parse(absoluteFilePath).root,
+    ...absoluteSegments.slice(0, appIndex + 1)
+  );
+
+  while (toAbsolutePosix(currentDirectory).startsWith(toAbsolutePosix(appDirectory))) {
+    for (const fileName of [
+      "page.tsx",
+      "page.ts",
+      "page.jsx",
+      "page.js",
+      "layout.tsx",
+      "layout.ts",
+      "layout.jsx",
+      "layout.js",
+      "not-found.tsx",
+      "not-found.ts",
+      "not-found.jsx",
+      "not-found.js"
+    ]) {
+      const candidate = toAbsolutePosix(path.join(currentDirectory, fileName));
+
+      if (!knownFiles.has(candidate)) {
+        continue;
+      }
+
+      if (fileName.startsWith("not-found")) {
+        return "not_found";
+      }
+
+      const pageName = resolvePageName(candidate);
+
+      if (pageName) {
+        return pageName;
+      }
+    }
+
+    const parentDirectory = path.dirname(currentDirectory);
+
+    if (parentDirectory === currentDirectory) {
+      break;
+    }
+
+    currentDirectory = parentDirectory;
+  }
+
+  return null;
+}
+
 function resolveTypeScriptImport(
   importerFile: string,
   specifier: string,
@@ -427,6 +520,127 @@ export interface ResolvedFileLocalizationMetadata {
   pageName?: string;
   pageNames?: string[];
   componentName?: string;
+  ownershipConfidence?: "high" | "learned" | "shared" | "unresolved";
+  unresolvedOwnership?: LocaleUnresolvedOwnershipStrategy;
+}
+
+async function buildLearnedOwnershipMap(
+  knownFiles: Set<string>,
+  projectRoots: readonly string[]
+): Promise<Map<string, ResolvedFileLocalizationMetadata>> {
+  const stateRoot = [...projectRoots].sort((left, right) => left.length - right.length)[0];
+  const projectState = await readGlobalyzeProjectState(stateRoot);
+
+  if (
+    projectState.projectRoot &&
+    !projectRoots.some(
+      (projectRoot) => toAbsolutePosix(projectRoot) === toAbsolutePosix(projectState.projectRoot ?? "")
+    )
+  ) {
+    return new Map<string, ResolvedFileLocalizationMetadata>();
+  }
+
+  const graph = await readTranslationGraph(stateRoot);
+  const learned = new Map<string, ResolvedFileLocalizationMetadata>();
+
+  const register = (
+    relativeFilePath: string,
+    entry: ResolvedFileLocalizationMetadata
+  ): void => {
+    for (const projectRoot of projectRoots) {
+      const absoluteFilePath = toAbsolutePosix(path.resolve(projectRoot, relativeFilePath));
+
+      if (!knownFiles.has(absoluteFilePath)) {
+        continue;
+      }
+
+      const existing = learned.get(absoluteFilePath);
+
+      if (
+        existing?.ownershipConfidence === "high" &&
+        entry.ownershipConfidence !== "high"
+      ) {
+        continue;
+      }
+
+      learned.set(absoluteFilePath, entry);
+    }
+  };
+
+  for (const entry of Object.values(graph)) {
+    const pageNames =
+      entry.pageNames && entry.pageNames.length > 0
+        ? [...entry.pageNames]
+        : entry.pageName
+          ? [entry.pageName]
+          : [];
+    const learnedEntry: ResolvedFileLocalizationMetadata =
+      pageNames.length === 1
+        ? {
+            sourceType: entry.sourceType ?? "component",
+            pageName: pageNames[0],
+            pageNames,
+            componentName: entry.componentName,
+            ownershipConfidence:
+              entry.ownershipConfidence === "high" ? "high" : "learned"
+          }
+        : pageNames.length > 1
+          ? {
+              sourceType: entry.sourceType ?? "component",
+              pageNames,
+              componentName: entry.componentName,
+              ownershipConfidence: "shared"
+            }
+          : {
+              sourceType: entry.sourceType ?? "component",
+              componentName: entry.componentName,
+              ownershipConfidence: "unresolved"
+            };
+
+    register(entry.originFile, learnedEntry);
+
+    for (const usage of entry.usages) {
+      register(usage, learnedEntry);
+    }
+  }
+
+  return learned;
+}
+
+async function buildUnresolvedOwnershipMap(
+  knownFiles: Set<string>,
+  projectRoots: readonly string[]
+): Promise<Map<string, LocaleUnresolvedOwnershipStrategy>> {
+  const stateRoot = [...projectRoots].sort((left, right) => left.length - right.length)[0];
+  const projectState = await readGlobalyzeProjectState(stateRoot);
+
+  if (
+    projectState.projectRoot &&
+    !projectRoots.some(
+      (projectRoot) =>
+        toAbsolutePosix(projectRoot) ===
+        toAbsolutePosix(projectState.projectRoot ?? "")
+    )
+  ) {
+    return new Map<string, LocaleUnresolvedOwnershipStrategy>();
+  }
+
+  const decisions = projectState.unresolvedOwnership ?? {};
+  const resolved = new Map<string, LocaleUnresolvedOwnershipStrategy>();
+
+  for (const [relativeFilePath, strategy] of Object.entries(decisions)) {
+    for (const projectRoot of projectRoots) {
+      const absoluteFilePath = toAbsolutePosix(
+        path.resolve(projectRoot, relativeFilePath)
+      );
+
+      if (knownFiles.has(absoluteFilePath)) {
+        resolved.set(absoluteFilePath, strategy);
+      }
+    }
+  }
+
+  return resolved;
 }
 
 export async function buildFileLocalizationMetadata(
@@ -441,6 +655,11 @@ export async function buildFileLocalizationMetadata(
   const metadata = new Map<string, ResolvedFileLocalizationMetadata>();
   const compilerOptionsByConfigPath = new Map<string, ts.CompilerOptions>();
   const configPathByDirectory = new Map<string, string | null>();
+  const learnedOwnership = await buildLearnedOwnershipMap(knownFiles, projectRoots);
+  const unresolvedOwnership = await buildUnresolvedOwnershipMap(
+    knownFiles,
+    projectRoots
+  );
 
   for (const filePath of normalizedFiles) {
     const source = await Bun.file(filePath).text();
@@ -451,11 +670,13 @@ export async function buildFileLocalizationMetadata(
       pageName
         ? {
             sourceType: "page",
-            pageName
+            pageName,
+            ownershipConfidence: "high"
           }
         : {
             sourceType: "component",
-            componentName: resolveComponentName(filePath, source)
+            componentName: resolveComponentName(filePath, source),
+            ownershipConfidence: "unresolved"
           }
     );
 
@@ -523,7 +744,8 @@ export async function buildFileLocalizationMetadata(
       metadata.set(filePath, {
         ...value,
         pageName: owners[0],
-        pageNames: owners
+        pageNames: owners,
+        ownershipConfidence: "high"
       });
       continue;
     }
@@ -531,9 +753,52 @@ export async function buildFileLocalizationMetadata(
     if (owners.length > 1) {
       metadata.set(filePath, {
         ...value,
-        pageNames: owners.sort((left, right) => left.localeCompare(right))
+        pageNames: owners.sort((left, right) => left.localeCompare(right)),
+        ownershipConfidence: "shared"
       });
+      continue;
     }
+
+    const nearestRouteOwner = inferNearestAppRouteOwnerFromPath(filePath, knownFiles);
+
+    if (nearestRouteOwner) {
+      metadata.set(filePath, {
+        ...value,
+        pageName: nearestRouteOwner,
+        pageNames: [nearestRouteOwner],
+        ownershipConfidence: "high"
+      });
+      continue;
+    }
+
+    if (isConventionallySharedComponent(filePath)) {
+      metadata.set(filePath, {
+        ...value,
+        ownershipConfidence: "shared"
+      });
+      continue;
+    }
+
+    const learned = learnedOwnership.get(filePath);
+
+    const explicitUnresolvedOwnership = unresolvedOwnership.get(filePath);
+
+    if (!learned) {
+      metadata.set(filePath, {
+        ...value,
+        ownershipConfidence: explicitUnresolvedOwnership ? "learned" : "unresolved",
+        unresolvedOwnership: explicitUnresolvedOwnership
+      });
+      continue;
+    }
+
+    metadata.set(filePath, {
+      ...value,
+      pageName: learned.pageName,
+      pageNames: learned.pageNames,
+      ownershipConfidence: learned.ownershipConfidence ?? "learned",
+      unresolvedOwnership: explicitUnresolvedOwnership
+    });
   }
 
   return metadata;

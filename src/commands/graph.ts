@@ -148,7 +148,7 @@ export async function executeGraphCommand(
     page: options.page,
     component: options.component
   });
-  const graph = options.visual ? await readTranslationGraph() : null;
+  const graph = options.visual ? await readTranslationGraph(config.rootDir) : null;
 
   logger.heading("Translation Graph");
   logger.info(`Total Keys: ${String(summary.totalKeys)}`);

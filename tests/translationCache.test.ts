@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import fs from "fs-extra";
 import path from "node:path";
 
 import {
@@ -7,32 +6,39 @@ import {
   readTranslationCache,
   storeCachedTranslations
 } from "../src/cache/translationCache";
-import { resolveGlobalyzeRootDir } from "../src/utils/fileUtils";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 describe("translationCache", () => {
-  const cachePath = path.join(
-    resolveGlobalyzeRootDir(),
-    ".globalyze",
-    "translations.json"
-  );
+  const tempDirectories: string[] = [];
 
   afterEach(async () => {
-    await fs.remove(cachePath);
+    await Promise.all(
+      tempDirectories.map((directory) =>
+        rm(directory, { recursive: true, force: true })
+      )
+    );
+    tempDirectories.length = 0;
   });
 
   it("stores and reuses cached translations", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-cache-"));
+    tempDirectories.push(rootDir);
+
     await storeCachedTranslations(
       { "checkout.button": "Checkout" },
       "fr",
-      { "checkout.button": "Paiement" }
+      { "checkout.button": "Paiement" },
+      rootDir
     );
 
-    const cache = await readTranslationCache();
+    const cache = await readTranslationCache(rootDir);
     expect(cache.Checkout?.fr).toBe("Paiement");
 
     const cached = await getCachedTranslations(
       { "checkout.button": "Checkout" },
-      "fr"
+      "fr",
+      rootDir
     );
     expect(cached.hits).toBe(1);
     expect(cached.translations["checkout.button"]).toBe("Paiement");

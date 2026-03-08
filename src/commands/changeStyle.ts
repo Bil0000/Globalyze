@@ -8,6 +8,7 @@ import {
   readLocaleEntries,
   writeLocaleEntries
 } from "../i18n/localeManager";
+import { refreshGeneratedTranslationManifests } from "../runtime/translationsManifest";
 import { scanProjectFiles } from "../scanner/projectScanner";
 import type {
   LocaleEntryDictionary,
@@ -123,9 +124,20 @@ export async function executeChangeStyleCommand(
     },
     () => `Regenerated locale files in ${nextConfig.localesDir}`
   );
+  const refreshedManifests = await logger.step(
+    "Refreshing generated translation manifests",
+    () => refreshGeneratedTranslationManifests(nextConfig),
+    (paths) =>
+      paths.length > 0
+        ? `Updated ${String(paths.length)} generated translation manifest${paths.length === 1 ? "" : "s"}`
+        : "No generated translation manifests were found"
+  );
 
   if (localeSync.removed.length > 0) {
     logger.info(`Removed stale locales: ${localeSync.removed.join(", ")}`);
+  }
+  if (refreshedManifests.length > 0) {
+    logger.info(`Refreshed: ${refreshedManifests.join(", ")}`);
   }
 
   logger.success("Locale file style updated.");

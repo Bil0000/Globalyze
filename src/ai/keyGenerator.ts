@@ -792,6 +792,8 @@ export function createKeyAssignments(
       componentName: item.componentName,
       pageName: item.pageName,
       pageNames: item.pageNames,
+      ownershipConfidence: item.ownershipConfidence,
+      unresolvedOwnership: item.unresolvedOwnership,
       elementType: item.elementType
     });
   }

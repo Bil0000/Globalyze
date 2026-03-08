@@ -203,4 +203,124 @@ describe("nameResolver", () => {
     expect(metadata.get(breadcrumbComponent)?.pageName).toBe("dashboard");
     expect(metadata.get(carouselComponent)?.pageName).toBe("dashboard");
   });
+
+  it("resolves page ownership through nested app-relative _components imports", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-name-resolver-"));
+    tempDirectories.push(rootDir);
+
+    await mkdir(path.join(rootDir, "src", "app", "default", "_components", "sidebar"), {
+      recursive: true
+    });
+
+    const defaultPage = path.join(rootDir, "src", "app", "default", "page.tsx");
+    const langPickerComponent = path.join(
+      rootDir,
+      "src",
+      "app",
+      "default",
+      "_components",
+      "sidebar",
+      "lang-picker.tsx"
+    );
+
+    await writeFile(
+      defaultPage,
+      [
+        'import { LangPicker } from "./_components/sidebar/lang-picker";',
+        "export default function DefaultPage() {",
+        "  return <LangPicker />;",
+        "}",
+        ""
+      ].join("\n"),
+      "utf8"
+    );
+    await writeFile(
+      langPickerComponent,
+      "export function LangPicker() { return null; }\n",
+      "utf8"
+    );
+
+    const metadata = await buildFileLocalizationMetadata([
+      defaultPage,
+      langPickerComponent
+    ]);
+
+    expect(metadata.get(langPickerComponent)?.pageName).toBe("default");
+    expect(metadata.get(langPickerComponent)?.pageNames).toEqual(["default"]);
+  });
+
+  it("infers nearest app route ownership for unresolved private route components", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-name-resolver-"));
+    tempDirectories.push(rootDir);
+
+    await mkdir(path.join(rootDir, "src", "app", "(main)", "dashboard", "_components", "sidebar"), {
+      recursive: true
+    });
+
+    const dashboardLayout = path.join(
+      rootDir,
+      "src",
+      "app",
+      "(main)",
+      "dashboard",
+      "layout.tsx"
+    );
+    const navDocuments = path.join(
+      rootDir,
+      "src",
+      "app",
+      "(main)",
+      "dashboard",
+      "_components",
+      "sidebar",
+      "nav-documents.tsx"
+    );
+
+    await writeFile(
+      dashboardLayout,
+      "export default function DashboardLayout({ children }: { children: React.ReactNode }) { return children; }\n",
+      "utf8"
+    );
+    await writeFile(
+      navDocuments,
+      "export function NavDocuments() { return null; }\n",
+      "utf8"
+    );
+
+    const metadata = await buildFileLocalizationMetadata([
+      dashboardLayout,
+      navDocuments
+    ]);
+
+    expect(metadata.get(navDocuments)?.pageName).toBe("dashboard");
+    expect(metadata.get(navDocuments)?.ownershipConfidence).toBe("high");
+  });
+
+  it("marks conventionally shared support components as shared instead of unresolved", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-name-resolver-"));
+    tempDirectories.push(rootDir);
+
+    await mkdir(path.join(rootDir, "src", "components", "ui"), {
+      recursive: true
+    });
+
+    const breadcrumbComponent = path.join(
+      rootDir,
+      "src",
+      "components",
+      "ui",
+      "breadcrumb.tsx"
+    );
+
+    await writeFile(
+      breadcrumbComponent,
+      "export function Breadcrumb() { return null; }\n",
+      "utf8"
+    );
+
+    const metadata = await buildFileLocalizationMetadata([breadcrumbComponent]);
+
+    expect(metadata.get(breadcrumbComponent)?.ownershipConfidence).toBe("shared");
+    expect(metadata.get(breadcrumbComponent)?.pageName).toBeUndefined();
+  });
 });

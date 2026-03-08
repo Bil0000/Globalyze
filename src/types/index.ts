@@ -1,8 +1,9 @@
 export type SupportedFileExtension = ".ts" | ".tsx" | ".js" | ".jsx";
-export type LocaleFileFormat = "json" | "js";
+export type LocaleFileFormat = "json" | "js" | "ts";
 export type LocaleFileStructure = "single" | "multiple";
 export type LocaleSplitStrategy = "page" | "component";
 export type LocaleFileNaming = "dot" | "camel" | "snake" | "kebab";
+export type LocaleUnresolvedOwnershipStrategy = "common" | "file" | "page";
 
 export interface LocaleStructureConfig {
   format: LocaleFileFormat;
@@ -10,6 +11,7 @@ export interface LocaleStructureConfig {
   splitStrategy: LocaleSplitStrategy;
   commonFile: boolean;
   naming: LocaleFileNaming;
+  unresolvedOwnership: LocaleUnresolvedOwnershipStrategy;
 }
 
 export type BuiltInI18nAdapter =
@@ -93,6 +95,8 @@ export interface ExtractedString {
   componentName?: string;
   pageName?: string;
   pageNames?: string[];
+  ownershipConfidence?: "high" | "learned" | "shared" | "unresolved";
+  unresolvedOwnership?: LocaleUnresolvedOwnershipStrategy;
   elementType?: string;
   interpolation?: Record<string, string>;
 }
@@ -103,6 +107,8 @@ export interface KeyGenerationCandidate {
   componentName?: string;
   pageName?: string;
   pageNames?: string[];
+  ownershipConfidence?: "high" | "learned" | "shared" | "unresolved";
+  unresolvedOwnership?: LocaleUnresolvedOwnershipStrategy;
   elementType?: string;
 }
 
@@ -117,6 +123,8 @@ export interface LocaleKeyReference {
   pageNames?: string[];
   componentName?: string;
   sourceType?: "page" | "component";
+  ownershipConfidence?: "high" | "learned" | "shared" | "unresolved";
+  unresolvedOwnership?: LocaleUnresolvedOwnershipStrategy;
 }
 
 export interface TranslationMetaEntry {
@@ -136,6 +144,8 @@ export interface DynamicExtractionCandidate {
   componentName?: string;
   pageName?: string;
   pageNames?: string[];
+  ownershipConfidence?: "high" | "learned" | "shared" | "unresolved";
+  unresolvedOwnership?: LocaleUnresolvedOwnershipStrategy;
   elementType?: string;
 }
 
@@ -274,6 +284,7 @@ export interface TranslationGraphEntry {
   pageNames?: string[];
   componentName?: string;
   sourceType?: "page" | "component";
+  ownershipConfidence?: "high" | "learned" | "shared" | "unresolved";
   owner?: string;
   locked?: boolean;
   approvalRequired?: boolean;
@@ -307,6 +318,24 @@ export interface TranslationGraphSummary {
     count: number;
   }[];
   matchingKeys: string[];
+}
+
+export interface OwnershipVerificationEntry {
+  file: string;
+  componentName?: string;
+  pageName?: string;
+  pageNames?: string[];
+  status: "route-owned" | "learned" | "shared" | "unresolved";
+}
+
+export interface OwnershipVerificationReport {
+  totalFiles: number;
+  totalPages: number;
+  totalComponents: number;
+  routeOwned: OwnershipVerificationEntry[];
+  learned: OwnershipVerificationEntry[];
+  shared: OwnershipVerificationEntry[];
+  unresolved: OwnershipVerificationEntry[];
 }
 
 export interface TranslationSearchMatch {

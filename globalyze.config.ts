@@ -9,6 +9,7 @@ export default {
     splitStrategy: "page",
     commonFile: true,
     naming: "camel",
+    unresolvedOwnership: "common",
   },
   cacheTranslations: true,
   dynamicExtraction: false,
