@@ -10,6 +10,8 @@ export default {
     commonFile: true,
     naming: "camel",
   },
+  cacheTranslations: true,
+  dynamicExtraction: false,
   translationInstructions: [
     "This is a Next.js marketing application.",
     "Keep marketing copy and CTA labels short, natural, and persuasive.",

@@ -12,10 +12,16 @@ export interface LocaleStructureConfig {
   naming: LocaleFileNaming;
 }
 
+export interface ResolvedNameMetadata {
+  type: "page" | "component";
+  name: string;
+}
+
 export type ExtractedStringKind =
   | "jsx-text"
   | "jsx-expression-string"
-  | "jsx-attribute";
+  | "jsx-attribute"
+  | "jsx-dynamic";
 
 export interface GlobalyzeConfig {
   sourceDir: string;
@@ -23,6 +29,8 @@ export interface GlobalyzeConfig {
   languages: string[];
   ignore?: string[];
   localeStructure?: Partial<LocaleStructureConfig>;
+  cacheTranslations?: boolean;
+  dynamicExtraction?: boolean;
   translationInstructions?: string[];
   sourceLocale?: string;
   openAiModel?: string;
@@ -40,6 +48,8 @@ export interface ResolvedGlobalyzeConfig {
   languages: string[];
   ignore: string[];
   localeStructure: LocaleStructureConfig;
+  cacheTranslations: boolean;
+  dynamicExtraction: boolean;
   translationInstructions: string[];
   sourceLocale: string;
   openAiModel: string;
@@ -57,11 +67,18 @@ export interface ExtractedString {
   column: number;
   kind: ExtractedStringKind;
   attributeName?: string;
+  componentName?: string;
+  pageName?: string;
+  elementType?: string;
+  interpolation?: Record<string, string>;
 }
 
 export interface KeyGenerationCandidate {
   text: string;
   file: string;
+  componentName?: string;
+  pageName?: string;
+  elementType?: string;
 }
 
 export interface KeyAssignment extends KeyGenerationCandidate {
@@ -71,6 +88,18 @@ export interface KeyAssignment extends KeyGenerationCandidate {
 export interface LocaleKeyReference {
   key: string;
   file: string;
+}
+
+export interface DynamicExtractionCandidate {
+  text: string;
+  template: string;
+  file: string;
+  line: number;
+  column: number;
+  variables: Record<string, string>;
+  componentName?: string;
+  pageName?: string;
+  elementType?: string;
 }
 
 export interface KeyGenerationResult {
@@ -111,6 +140,8 @@ export interface TranslationResult {
   translatedLocales: string[];
   usedMockTranslations: boolean;
   skippedReason?: string;
+  cacheHits?: number;
+  cacheWrites?: number;
 }
 
 export interface LanguageCoverageReport {
@@ -191,4 +222,18 @@ export interface ProjectScoreSummary {
   unusedLocaleKeys: number;
   healthyLocales: boolean;
   grade: "A" | "B" | "C" | "D";
+}
+
+export interface TranslationGraphEntry {
+  text: string;
+  originFile: string;
+  localeFile: string;
+  usages: string[];
+}
+
+export type TranslationGraph = Record<string, TranslationGraphEntry>;
+
+export interface DetectedLanguageResult {
+  languages: string[];
+  sources: string[];
 }

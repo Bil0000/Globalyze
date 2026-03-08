@@ -45,14 +45,20 @@ Generated locale entry:
 
 - Scans React and Next.js source trees for `.ts`, `.tsx`, `.js`, and `.jsx`
 - Extracts JSX text, string literals inside JSX, and selected translatable JSX attributes
+- Extracts dynamic JSX interpolation templates such as ``{user.name} added {count} items``
 - Generates semantic i18n keys with OpenAI using `gpt-4o-mini`
+- Uses file path, page name, component name, and JSX element type as AI key-generation context
 - Reuses similar existing keys for small copy changes
 - Falls back to deterministic slug-based keys when AI is unavailable
 - Rewrites source files with Babel AST transforms
 - Injects the configured translation import automatically
 - Creates and synchronizes locale files in configurable JSON or JavaScript layouts
 - Translates target locales with Lingo.dev
+- Caches translated strings in `.globalyze/translations.json`
 - Falls back to English values when translation credentials or network access are unavailable
+- Tracks key usage and origin metadata in `.globalyze/translationGraph.json`
+- Detects duplicate source texts, unused keys, and supports key renames from the CLI
+- Ships an ESLint plugin rule for hardcoded JSX strings
 - Checks translation coverage and reports missing keys
 - Scores repository i18n quality
 - Previews transformations without writing files
@@ -67,6 +73,7 @@ Globalyze currently targets:
 
 - React applications
 - Next.js applications
+- TanStack Start route trees for page-name inference
 
 The parser and scanner support:
 
@@ -129,6 +136,8 @@ globalyze init
 ```
 
 This creates `globalyze.config.ts`.
+
+During initialization, Globalyze auto-detects likely project languages from existing locale files, Next.js config, and common i18n libraries, then asks whether to use the detected set.
 
 To customize the initial language set:
 
@@ -241,6 +250,22 @@ Use this when you want to move between:
 Options:
 
 - `-c, --config <path>`
+
+### `globalyze dynamic-remove`
+
+Reverts interpolated `t(key, params)` calls back into JSX string expressions using the source locale templates.
+
+### `globalyze duplicates`
+
+Finds multiple translation keys that share the same source text.
+
+### `globalyze clean`
+
+Finds unused locale keys. Use `--fix` to remove them from locale files.
+
+### `globalyze rename <oldKey> <newKey>`
+
+Renames a translation key across source files, locale files, and the translation graph.
 
 ### `globalyze scan`
 
@@ -365,6 +390,8 @@ export default {
     commonFile: false,
     naming: "dot"
   },
+  cacheTranslations: true,
+  dynamicExtraction: false,
   translationInstructions: [
     "This is a Next.js commerce application.",
     "Use natural commerce wording for pricing, checkout, orders, and purchase actions.",
@@ -386,6 +413,8 @@ export default {
 - `languages`: supported locales
 - `ignore`: ignored directories
 - `localeStructure`: file format, layout, and multi-file naming convention for locale output
+- `cacheTranslations`: persist and reuse translated strings from `.globalyze/translations.json`
+- `dynamicExtraction`: enable extraction and transformation of interpolated JSX strings
 - `translationInstructions`: editable translation context inferred during `globalyze init` and forwarded to Lingo as per-key hints
 - `sourceLocale`: canonical source locale, default `en`
 - `openAiModel`: OpenAI model for key generation
@@ -428,9 +457,12 @@ Available actions:
 - Scan project for strings
 - Add languages to config
 - Change locale file style
+- Remove dynamic translations
 - Preview transformations
 - Transform source code
 - Generate translations
+- Show duplicate translations
+- Clean unused locale keys
 - Watch for new strings
 - Analyze screenshot
 - Run full pipeline
@@ -562,6 +594,60 @@ When `localeStructure.structure` is `multiple` and `commonFile` is `true`, Globa
 ### Changing Style Later
 
 Use `globalyze style` to migrate locale files after initialization. This command preserves existing keys and translations, then rewrites the locale output using the newly selected layout.
+
+## ESLint Plugin
+
+Globalyze includes an ESLint plugin package at [packages/eslint-plugin-globalyze](/Users/bilal/Documents/globalyze/packages/eslint-plugin-globalyze).
+
+Rule:
+
+- `globalyze/no-hardcoded-ui-strings`
+
+Example config:
+
+```json
+{
+  "plugins": ["globalyze"],
+  "rules": {
+    "globalyze/no-hardcoded-ui-strings": "warn"
+  }
+}
+```
+
+## Dynamic Extraction
+
+When `dynamicExtraction` is enabled, Globalyze can transform interpolated JSX expressions such as:
+
+```tsx
+<h1>{`${user.name} added ${itemCount} items`}</h1>
+```
+
+into:
+
+```tsx
+<h1>{t("activity.items_added", { name: user.name, itemCount })}</h1>
+```
+
+with a source-locale template like:
+
+```json
+{
+  "activity.items_added": "{name} added {itemCount} items"
+}
+```
+
+Use `globalyze dynamic-remove` to revert those translation calls back into JSX expressions.
+
+## Translation Cache And Graph
+
+Globalyze maintains two cache files under the main repo root:
+
+- `.globalyze/translations.json`
+  Reuses previously translated source text per target language before calling Lingo.dev again.
+- `.globalyze/translationGraph.json`
+  Tracks key text, origin file, target locale file, and source usages.
+
+The graph is refreshed during `scan`, `transform`, and `run`.
 
 ## Architecture Overview
 

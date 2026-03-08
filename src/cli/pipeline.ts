@@ -1,6 +1,7 @@
 import path from "node:path";
 
 import { createKeyAssignments, generateSemanticKeys } from "../ai/keyGenerator";
+import { extractDynamicStringsFromFiles } from "../extractor/dynamicExtractor";
 import { extractStringsFromFiles } from "../extractor/stringExtractor";
 import { extractTranslationKeysFromFiles } from "../extractor/translationKeyExtractor";
 import {
@@ -13,6 +14,7 @@ import { translateLocales } from "../lingo/lingoClient";
 import { scanProjectFiles } from "../scanner/projectScanner";
 import { transformFiles } from "../transformer/astTransformer";
 import type {
+  ExtractedString,
   FullRunResult,
   MissingTranslationReport,
   ResolvedGlobalyzeConfig,
@@ -29,10 +31,24 @@ export async function collectProjectStrings(
 ): Promise<ScanResult> {
   const files = await scanProjectFiles(config);
   const strings = await extractStringsFromFiles(files);
+  const dynamicStrings = config.dynamicExtraction
+    ? await extractDynamicStringsFromFiles(files)
+    : [];
+  const normalizedDynamicStrings: ExtractedString[] = dynamicStrings.map((item) => ({
+    text: item.text,
+    file: item.file,
+    line: item.line,
+    column: item.column,
+    kind: "jsx-dynamic",
+    componentName: item.componentName,
+    pageName: item.pageName,
+    elementType: item.elementType,
+    interpolation: item.variables
+  }));
 
   return {
     files,
-    strings: strings
+    strings: [...strings, ...normalizedDynamicStrings]
       .map((item) => ({
         ...item,
         file: toRelativePosixPath(config.rootDir, item.file)
@@ -58,7 +74,21 @@ export async function prepareTransformProject(
 ): Promise<TransformPreparationResult> {
   const files = await scanProjectFiles(config);
   const rawStrings = await extractStringsFromFiles(files);
-  const keySourceStrings = rawStrings.map((item) => ({
+  const dynamicStrings = config.dynamicExtraction
+    ? await extractDynamicStringsFromFiles(files)
+    : [];
+  const normalizedDynamicStrings: ExtractedString[] = dynamicStrings.map((item) => ({
+    text: item.text,
+    file: item.file,
+    line: item.line,
+    column: item.column,
+    kind: "jsx-dynamic",
+    componentName: item.componentName,
+    pageName: item.pageName,
+    elementType: item.elementType,
+    interpolation: item.variables
+  }));
+  const keySourceStrings = [...rawStrings, ...normalizedDynamicStrings].map((item) => ({
     ...item,
     file: toRelativePosixPath(config.sourceDir, item.file)
   }));
@@ -97,7 +127,7 @@ export async function prepareTransformProject(
 
   return {
     files,
-    rawStrings,
+    rawStrings: [...rawStrings, ...normalizedDynamicStrings],
     keyAssignments,
     keysByText: keyResult.keysByText,
     usedFallbackKeys: keyResult.usedFallback,

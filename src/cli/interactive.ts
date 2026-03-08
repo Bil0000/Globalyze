@@ -18,6 +18,9 @@ import { executePreviewCommand } from "../commands/preview";
 import { executeWatchCommand } from "../commands/watch";
 import { executeAddLanguagesCommand } from "../commands/languages";
 import { executeChangeStyleCommand } from "../commands/changeStyle";
+import { executeCleanCommand } from "../commands/clean";
+import { executeDuplicatesCommand } from "../commands/duplicates";
+import { executeDynamicRemoveCommand } from "../commands/dynamicRemove";
 
 export async function launchInteractiveCLI(): Promise<void> {
   intro("🌍 Globalyze — Automatic App Localization");
@@ -28,9 +31,12 @@ export async function launchInteractiveCLI(): Promise<void> {
       { label: "Scan project for strings", value: "scan" },
       { label: "Add languages to config", value: "languages" },
       { label: "Change locale file style", value: "style" },
+      { label: "Remove dynamic translations", value: "dynamic-remove" },
       { label: "Preview transformations", value: "preview" },
       { label: "Transform source code", value: "transform" },
       { label: "Generate translations", value: "translate" },
+      { label: "Show duplicate translations", value: "duplicates" },
+      { label: "Clean unused locale keys", value: "clean" },
       { label: "Watch for new strings", value: "watch" },
       { label: "Analyze screenshot", value: "screenshot" },
       { label: "Run full pipeline", value: "run" },
@@ -70,12 +76,24 @@ export async function launchInteractiveCLI(): Promise<void> {
     await executeChangeStyleCommand();
   }
 
+  if (action === "dynamic-remove") {
+    await executeDynamicRemoveCommand();
+  }
+
   if (action === "transform") {
     await executeTransformCommand();
   }
 
   if (action === "translate") {
     await executeTranslateCommand();
+  }
+
+  if (action === "duplicates") {
+    await executeDuplicatesCommand();
+  }
+
+  if (action === "clean") {
+    await executeCleanCommand();
   }
 
   if (action === "watch") {

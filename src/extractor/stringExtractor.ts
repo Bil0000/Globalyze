@@ -1,10 +1,12 @@
 import { parse } from "@babel/parser";
 import traverse from "@babel/traverse";
+import * as t from "@babel/types";
 import type { File } from "@babel/types";
 
 import type { ExtractedString } from "../types";
 import { GlobalyzeError } from "../utils/errors";
 import { toPosixPath } from "../utils/fileUtils";
+import { resolveComponentName, resolvePageName } from "../utils/nameResolver";
 
 const TRANSlatable_ATTRIBUTES = new Set([
   "title",
@@ -73,6 +75,29 @@ export function extractStringsFromSource(
   const ast = parseSource(source, filePath);
   const extracted: ExtractedString[] = [];
   const normalizedFilePath = toPosixPath(filePath);
+  const componentName = resolveComponentName(filePath, source);
+  const pageName = resolvePageName(filePath) ?? undefined;
+
+  function resolveElementType(path: {
+    parentPath: {
+      isJSXElement: () => boolean;
+      node?: unknown;
+    };
+  }): string | undefined {
+    if (!path.parentPath.isJSXElement()) {
+      return undefined;
+    }
+
+    const parentNode = path.parentPath.node as t.Node | null | undefined;
+
+    if (!parentNode || !t.isJSXElement(parentNode)) {
+      return undefined;
+    }
+
+    return t.isJSXIdentifier(parentNode.openingElement.name)
+      ? parentNode.openingElement.name.name
+      : undefined;
+  }
 
   traverse(ast, {
     JSXText(path) {
@@ -92,7 +117,10 @@ export function extractStringsFromSource(
         file: normalizedFilePath,
         line: location.line,
         column: location.column,
-        kind: "jsx-text"
+        kind: "jsx-text",
+        componentName,
+        pageName,
+        elementType: resolveElementType(path)
       });
     },
     JSXExpressionContainer(path) {
@@ -120,7 +148,10 @@ export function extractStringsFromSource(
         file: normalizedFilePath,
         line: location.line,
         column: location.column,
-        kind: "jsx-expression-string"
+        kind: "jsx-expression-string",
+        componentName,
+        pageName,
+        elementType: resolveElementType(path)
       });
     },
     JSXAttribute(path) {
@@ -153,7 +184,14 @@ export function extractStringsFromSource(
         line: location.line,
         column: location.column,
         kind: "jsx-attribute",
-        attributeName: path.node.name.name
+        attributeName: path.node.name.name,
+        componentName,
+        pageName,
+        elementType:
+          t.isJSXOpeningElement(path.parentPath.node) &&
+          t.isJSXIdentifier(path.parentPath.node.name)
+            ? path.parentPath.node.name.name
+            : undefined
       });
     }
   });

@@ -86,10 +86,10 @@ describe("processWatchUpdate", () => {
     expect(result.newStrings).toHaveLength(1);
     expect(result.translation?.translatedLocales).toEqual(["fr"]);
     expect(englishLocale).toEqual({
-      "pricing.contact_support": "Contact Support"
+      "pricing.button.pricing.contact_support": "Contact Support"
     });
     expect(frenchLocale).toEqual({
-      "pricing.contact_support": "fr:Contact Support"
+      "pricing.button.pricing.contact_support": "fr:Contact Support"
     });
   });
 

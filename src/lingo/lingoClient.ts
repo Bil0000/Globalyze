@@ -1,5 +1,9 @@
 import { LingoDotDevEngine } from "lingo.dev/sdk";
 
+import {
+  getCachedTranslations,
+  storeCachedTranslations
+} from "../cache/translationCache";
 import type {
   LocaleDictionary,
   ResolvedGlobalyzeConfig,
@@ -94,20 +98,51 @@ export async function translateLocales(
     sourceLocale,
     config.translationInstructions
   );
+  let cacheHits = 0;
+  let cacheWrites = 0;
 
   for (const language of targetLanguages) {
     try {
-      const translated = await engine.localizeObject(sourceLocale, {
-        sourceLocale: config.sourceLocale,
-        targetLocale: language,
-        ...(hints ? { hints } : {})
-      });
+      const cached = config.cacheTranslations
+        ? await getCachedTranslations(sourceLocale, language)
+        : { translations: {}, hits: 0 };
+      cacheHits += cached.hits;
+      const pendingSourceLocale = Object.fromEntries(
+        Object.entries(sourceLocale).filter(
+          ([key]) => typeof cached.translations[key] !== "string"
+        )
+      );
+      const translated =
+        Object.keys(pendingSourceLocale).length > 0
+          ? await engine.localizeObject(pendingSourceLocale, {
+              sourceLocale: config.sourceLocale,
+              targetLocale: language,
+              ...(hints
+                ? {
+                    hints: Object.fromEntries(
+                      Object.entries(hints).filter(([key]) => key in pendingSourceLocale)
+                    )
+                  }
+                : {})
+            })
+          : {};
+      const mergedTranslatedLocale = {
+        ...cached.translations,
+        ...coerceTranslatedLocale(translated, pendingSourceLocale)
+      };
 
       await writeLocaleDictionary(
         config,
         language,
-        coerceTranslatedLocale(translated, sourceLocale)
+        coerceTranslatedLocale(mergedTranslatedLocale, sourceLocale)
       );
+      if (config.cacheTranslations) {
+        cacheWrites += await storeCachedTranslations(
+          sourceLocale,
+          language,
+          coerceTranslatedLocale(mergedTranslatedLocale, sourceLocale)
+        );
+      }
     } catch (error) {
       const reason =
         error instanceof Error ? error.message : "Unknown translation failure";
@@ -121,6 +156,8 @@ export async function translateLocales(
   return {
     translatedLocales: targetLanguages,
     usedMockTranslations: fallbackWarnings.length > 0,
+    cacheHits,
+    cacheWrites,
     ...(fallbackWarnings.length > 0
       ? { skippedReason: fallbackWarnings.join(" ") }
       : {})

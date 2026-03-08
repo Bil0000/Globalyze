@@ -14,6 +14,8 @@ export function createTestConfig(
     languages: ["en", "fr", "de", "ar"],
     ignore: ["node_modules", "dist", "build", ".next", ".git"],
     localeStructure: DEFAULT_LOCALE_STRUCTURE,
+    cacheTranslations: true,
+    dynamicExtraction: true,
     translationInstructions: [
       "This is a React application with user-facing UI text.",
       "Keep labels, actions, and short UI text concise and natural for the target locale.",

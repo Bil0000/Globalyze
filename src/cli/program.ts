@@ -1,6 +1,9 @@
 import { Command } from "commander";
 
 import { registerChangeStyleCommand } from "../commands/changeStyle";
+import { registerCleanCommand } from "../commands/clean";
+import { registerDuplicatesCommand } from "../commands/duplicates";
+import { registerDynamicRemoveCommand } from "../commands/dynamicRemove";
 import { registerInitCommand } from "../commands/init";
 import { registerLanguagesCommand } from "../commands/languages";
 import { registerPreviewCommand } from "../commands/preview";
@@ -9,6 +12,7 @@ import { registerRunCommand } from "../commands/run";
 import { registerScanCommand } from "../commands/scan";
 import { registerScoreCommand } from "../commands/score";
 import { registerScreenshotCommand } from "../commands/screenshot";
+import { registerRenameCommand } from "../commands/rename";
 import { registerTransformCommand } from "../commands/transform";
 import { registerTranslateCommand } from "../commands/translate";
 import { registerWatchCommand } from "../commands/watch";
@@ -25,9 +29,13 @@ export function buildProgram(version: string): Command {
 
   registerInitCommand(program);
   registerChangeStyleCommand(program);
+  registerDynamicRemoveCommand(program);
   registerLanguagesCommand(program);
   registerPreviewCommand(program);
   registerScanCommand(program);
+  registerDuplicatesCommand(program);
+  registerCleanCommand(program);
+  registerRenameCommand(program);
   registerWatchCommand(program);
   registerScreenshotCommand(program);
   registerTransformCommand(program);

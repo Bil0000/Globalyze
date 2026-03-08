@@ -3,6 +3,8 @@ dist
 .DS_Store
 .env
 coverage
+.globalyze
+.cache
 examples/demo-nextjs/.next
 examples/demo-nextjs/locales
 examples/demo-nextjs/

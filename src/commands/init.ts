@@ -1,6 +1,7 @@
 import { Command } from "commander";
-import { confirm, isCancel, select } from "@clack/prompts";
+import { confirm, isCancel, select, text } from "@clack/prompts";
 
+import { detectProjectLanguages } from "../config/languageDetection";
 import { inferTranslationInstructions } from "../context/appContext";
 import {
   createDefaultConfigContents,
@@ -130,6 +131,7 @@ export async function executeInitCommand(
     force?: boolean;
     langs?: string;
     localeStructure?: LocaleStructureConfig;
+    dynamicExtraction?: boolean;
   } = {}
 ): Promise<void> {
   const configPath = "globalyze.config.ts";
@@ -142,16 +144,19 @@ export async function executeInitCommand(
 
   const languages = options.langs
     ? normalizeLanguageCodes(options.langs.split(","))
-    : undefined;
+    : await resolveInitialLanguages();
   const translationInstructions = await inferTranslationInstructions(process.cwd());
   const localeStructure = options.localeStructure ?? await promptLocaleStructure();
+  const dynamicExtraction =
+    options.dynamicExtraction ?? (await promptDynamicExtraction());
 
   await writeTextFile(
     configPath,
     createDefaultConfigContents(
       languages,
       translationInstructions,
-      localeStructure
+      localeStructure,
+      dynamicExtraction
     )
   );
   logger.success(
@@ -160,4 +165,63 @@ export async function executeInitCommand(
     }`
   );
   logger.info("Added editable translationInstructions based on the current app.");
+}
+
+async function promptDynamicExtraction(): Promise<boolean> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return false;
+  }
+
+  const enabled = await confirm({
+    message: "Enable dynamic extraction? (mixed JSX)",
+    initialValue: false
+  });
+
+  if (isCancel(enabled)) {
+    throw new GlobalyzeError("Dynamic extraction setup was cancelled.");
+  }
+
+  return enabled;
+}
+
+async function resolveInitialLanguages(): Promise<string[] | undefined> {
+  const detected = await detectProjectLanguages(process.cwd());
+
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return detected.languages;
+  }
+
+  if (
+    detected.languages.length === 1 &&
+    detected.languages[0] === "en"
+  ) {
+    const extraLanguages = await text({
+      message:
+        'Only "en" was detected. Add more languages now (comma separated), or leave blank to continue with en only'
+    });
+
+    if (isCancel(extraLanguages)) {
+      throw new GlobalyzeError("Language detection setup was cancelled.");
+    }
+
+    const trimmed = extraLanguages.trim();
+    return trimmed.length > 0
+      ? normalizeLanguageCodes(trimmed.split(","))
+      : ["en"];
+  }
+
+  if (detected.languages.length <= 1) {
+    return detected.languages;
+  }
+
+  const confirmed = await confirm({
+    message: `Detected project languages: ${detected.languages.join(", ")}. Use these languages?`,
+    initialValue: true
+  });
+
+  if (isCancel(confirmed)) {
+    throw new GlobalyzeError("Language detection setup was cancelled.");
+  }
+
+  return confirmed ? detected.languages : ["en"];
 }

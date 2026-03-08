@@ -120,9 +120,7 @@ describe("config commands", () => {
       "utf8"
     );
 
-    expect(configContents).toContain(
-      'languages: ["en", "ar", "fr", "de", "tr"]'
-    );
+    expect(configContents).toContain('languages: ["en", "tr"]');
     expect(turkishLocale).toContain('"checkout.buy_button": "Buy now"');
   });
 

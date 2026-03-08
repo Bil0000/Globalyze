@@ -105,6 +105,11 @@ function makeUniqueKey(
 }
 
 function createFallbackKey(candidate: KeyGenerationCandidate): string {
+  const contextualSegments = [
+    candidate.pageName ? slugifySegment(candidate.pageName) : "",
+    candidate.componentName ? slugifySegment(candidate.componentName) : "",
+    candidate.elementType ? slugifySegment(candidate.elementType) : ""
+  ].filter(Boolean);
   const normalizedPathSegments = toPosixPath(candidate.file)
     .split("/")
     .map((segment) => segment.replace(/\.[^.]+$/, ""))
@@ -132,7 +137,7 @@ function createFallbackKey(candidate: KeyGenerationCandidate): string {
     .filter((segment) => !GENERIC_FILE_SEGMENTS.has(segment))
     .slice(-2);
   const textSlug = slugifySegment(candidate.text).slice(0, 40) || "label";
-  const keySegments = [...contextSegments, textSlug]
+  const keySegments = [...contextualSegments, ...contextSegments, textSlug]
     .filter(Boolean)
     .slice(-4);
 
@@ -157,7 +162,15 @@ function buildPrompt(batch: readonly KeyGenerationCandidate[]): string {
   const rows = batch
     .map(
       (item, index) =>
-        `${String(index + 1)}. file: ${toPosixPath(item.file)}\ntext: ${item.text}`
+        [
+          `${String(index + 1)}. file: ${toPosixPath(item.file)}`,
+          `text: ${item.text}`,
+          item.componentName ? `component: ${item.componentName}` : "",
+          item.pageName ? `page: ${item.pageName}` : "",
+          item.elementType ? `element: ${item.elementType}` : ""
+        ]
+          .filter(Boolean)
+          .join("\n")
     )
     .join("\n\n");
 
@@ -246,7 +259,10 @@ function dedupeCandidates(
     seen.add(item.text);
     candidates.push({
       text: item.text,
-      file: item.file
+      file: item.file,
+      componentName: item.componentName,
+      pageName: item.pageName,
+      elementType: item.elementType
     });
   }
 

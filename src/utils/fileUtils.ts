@@ -38,9 +38,11 @@ export const DEFAULT_LOCALE_STRUCTURE: LocaleStructureConfig = {
 
 const DEFAULT_CONFIG: Omit<ResolvedGlobalyzeConfig, "rootDir" | "sourceDir" | "localesDir"> =
   {
-    languages: ["en", "ar", "fr", "de"],
+    languages: ["en"],
     ignore: DEFAULT_IGNORE,
     localeStructure: DEFAULT_LOCALE_STRUCTURE,
+    cacheTranslations: true,
+    dynamicExtraction: false,
     translationInstructions: [
       "This is a React application with user-facing UI text.",
       "Keep labels, actions, and short UI text concise and natural for the target locale.",
@@ -202,6 +204,18 @@ function assertOptionalPositiveNumber(
   }
 }
 
+function assertOptionalBoolean(
+  fieldName: string,
+  value: unknown,
+  configPath: string
+): void {
+  if (value !== undefined && typeof value !== "boolean") {
+    throw new GlobalyzeError(
+      `Config at ${configPath} has an invalid "${fieldName}" value. Expected a boolean.`
+    );
+  }
+}
+
 function assertOptionalLocaleStructure(
   value: unknown,
   configPath: string
@@ -358,7 +372,8 @@ export function normalizeLanguageCodes(
 export function createDefaultConfigContents(
   languages: readonly string[] = DEFAULT_CONFIG.languages,
   translationInstructions: readonly string[] = DEFAULT_CONFIG.translationInstructions,
-  localeStructure: LocaleStructureConfig = DEFAULT_CONFIG.localeStructure
+  localeStructure: LocaleStructureConfig = DEFAULT_CONFIG.localeStructure,
+  dynamicExtraction = DEFAULT_CONFIG.dynamicExtraction
 ): string {
   return [
     "export default {",
@@ -367,6 +382,8 @@ export function createDefaultConfigContents(
     `  languages: ${formatStringArray(languages)},`,
     `  ignore: ${formatStringArray(DEFAULT_IGNORE)},`,
     `  localeStructure: ${formatLocaleStructure(localeStructure)},`,
+    `  cacheTranslations: ${DEFAULT_CONFIG.cacheTranslations ? "true" : "false"},`,
+    `  dynamicExtraction: ${dynamicExtraction ? "true" : "false"},`,
     `  translationInstructions: ${formatInstructionArray(translationInstructions)},`,
     `  sourceLocale: ${quoteString(DEFAULT_CONFIG.sourceLocale)},`,
     `  openAiModel: ${quoteString(DEFAULT_CONFIG.openAiModel)},`,
@@ -388,6 +405,8 @@ export function createConfigContents(
     | "languages"
     | "ignore"
     | "localeStructure"
+    | "cacheTranslations"
+    | "dynamicExtraction"
     | "translationInstructions"
     | "sourceLocale"
     | "openAiModel"
@@ -407,6 +426,8 @@ export function createConfigContents(
     `  languages: ${formatStringArray(config.languages)},`,
     `  ignore: ${formatStringArray(config.ignore)},`,
     `  localeStructure: ${formatLocaleStructure(config.localeStructure)},`,
+    `  cacheTranslations: ${config.cacheTranslations ? "true" : "false"},`,
+    `  dynamicExtraction: ${config.dynamicExtraction ? "true" : "false"},`,
     `  translationInstructions: ${formatInstructionArray(config.translationInstructions)},`,
     `  sourceLocale: ${quoteString(config.sourceLocale)},`,
     `  openAiModel: ${quoteString(config.openAiModel)},`,
@@ -511,6 +532,16 @@ export async function loadGlobalyzeConfig(
     mergedConfig.localeStructure,
     resolvedConfigPath
   );
+  assertOptionalBoolean(
+    "cacheTranslations",
+    mergedConfig.cacheTranslations,
+    resolvedConfigPath
+  );
+  assertOptionalBoolean(
+    "dynamicExtraction",
+    mergedConfig.dynamicExtraction,
+    resolvedConfigPath
+  );
   assertOptionalStringArray(
     "translationInstructions",
     mergedConfig.translationInstructions,
@@ -567,6 +598,14 @@ export async function loadGlobalyzeConfig(
     ),
     ignore: normalizeLanguageList(mergedConfig.ignore, DEFAULT_CONFIG.ignore),
     localeStructure: normalizeLocaleStructure(mergedConfig.localeStructure),
+    cacheTranslations:
+      typeof mergedConfig.cacheTranslations === "boolean"
+        ? mergedConfig.cacheTranslations
+        : DEFAULT_CONFIG.cacheTranslations,
+    dynamicExtraction:
+      typeof mergedConfig.dynamicExtraction === "boolean"
+        ? mergedConfig.dynamicExtraction
+        : DEFAULT_CONFIG.dynamicExtraction,
     translationInstructions: normalizeStringList(
       mergedConfig.translationInstructions,
       DEFAULT_CONFIG.translationInstructions

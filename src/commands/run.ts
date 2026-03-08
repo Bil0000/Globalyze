@@ -1,6 +1,8 @@
 import { Command } from "commander";
 
 import { prepareTransformProject } from "../cli/pipeline";
+import { extractTranslationKeyReferencesFromFiles } from "../extractor/translationKeyExtractor";
+import { updateTranslationGraph } from "../graph/translationGraph";
 import { buildSourceLocale, syncLocaleFiles } from "../i18n/localeManager";
 import { translateLocales } from "../lingo/lingoClient";
 import { transformFiles } from "../transformer/astTransformer";
@@ -77,6 +79,11 @@ export async function executeRunCommand(
       }),
     () => `Updated locale files in ${config.localesDir}`
   );
+  const references = await extractTranslationKeyReferencesFromFiles(
+    prepared.files,
+    config.translationFunctionName
+  );
+  await updateTranslationGraph(config, references);
   let translation: TranslationResult = {
     translatedLocales: [],
     usedMockTranslations: false,

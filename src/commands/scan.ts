@@ -1,6 +1,8 @@
 import { Command } from "commander";
 
 import { collectProjectStrings } from "../cli/pipeline";
+import { extractTranslationKeyReferencesFromFiles } from "../extractor/translationKeyExtractor";
+import { updateTranslationGraph } from "../graph/translationGraph";
 import type { GlobalyzeConfig } from "../types";
 import { GlobalyzeError } from "../utils/errors";
 import { loadGlobalyzeConfig } from "../utils/fileUtils";
@@ -63,6 +65,13 @@ export async function executeScanCommand(
     (scanResult) =>
       `Scanned ${String(scanResult.files.length)} files and extracted ${String(scanResult.strings.length)} strings`
   );
+  const references = await extractTranslationKeyReferencesFromFiles(
+    result.files,
+    config.translationFunctionName
+  ).catch(() => []);
+  if (references.length > 0) {
+    await updateTranslationGraph(config, references);
+  }
 
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));

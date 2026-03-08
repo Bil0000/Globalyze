@@ -7,6 +7,7 @@ import type {
   FileTransformResult,
   ResolvedGlobalyzeConfig
 } from "../types";
+import { extractDynamicTemplateFromExpression } from "../extractor/dynamicExtractor";
 import {
   isTranslatableAttributeName,
   normalizeUiText
@@ -37,9 +38,40 @@ function parseModule(source: string, filePath: string) {
 
 function createTranslationExpression(
   functionName: string,
-  key: string
+  key: string,
+  interpolation?: Record<string, string>
 ): t.CallExpression {
-  return t.callExpression(t.identifier(functionName), [t.stringLiteral(key)]);
+  const args: t.Expression[] = [t.stringLiteral(key)];
+
+  if (interpolation && Object.keys(interpolation).length > 0) {
+    args.push(
+      t.objectExpression(
+        Object.entries(interpolation).map(([name, expression]) =>
+          t.objectProperty(
+            t.identifier(name),
+            parseInterpolationExpression(expression)
+          )
+        )
+      )
+    );
+  }
+
+  return t.callExpression(t.identifier(functionName), args);
+}
+
+function parseInterpolationExpression(expression: string): t.Expression {
+  const parsed = parseModule(`const __globalyze = ${expression};`, expression);
+  const declaration = parsed.program.body[0];
+
+  if (
+    !t.isVariableDeclaration(declaration) ||
+    !declaration.declarations[0]?.init ||
+    !t.isExpression(declaration.declarations[0].init)
+  ) {
+    throw new GlobalyzeError(`Failed to parse interpolation expression: ${expression}`);
+  }
+
+  return declaration.declarations[0].init;
 }
 
 function createJsxTextReplacement(
@@ -175,17 +207,39 @@ export function transformSource(
         return;
       }
 
-      if (!t.isStringLiteral(path.node.expression)) {
+      if (t.isStringLiteral(path.node.expression)) {
+        const text = normalizeUiText(path.node.expression.value);
+
+        if (!text) {
+          return;
+        }
+
+        const key = keysByText.get(text);
+
+        if (!key) {
+          return;
+        }
+
+        path.node.expression = createTranslationExpression(
+          config.translationFunctionName,
+          key
+        );
+        state.transformed = true;
+        state.replacements += 1;
         return;
       }
 
-      const text = normalizeUiText(path.node.expression.value);
-
-      if (!text) {
+      if (!config.dynamicExtraction || !t.isExpression(path.node.expression)) {
         return;
       }
 
-      const key = keysByText.get(text);
+      const extracted = extractDynamicTemplateFromExpression(path.node.expression);
+
+      if (!extracted) {
+        return;
+      }
+
+      const key = keysByText.get(extracted.template);
 
       if (!key) {
         return;
@@ -193,7 +247,8 @@ export function transformSource(
 
       path.node.expression = createTranslationExpression(
         config.translationFunctionName,
-        key
+        key,
+        extracted.variables
       );
       state.transformed = true;
       state.replacements += 1;

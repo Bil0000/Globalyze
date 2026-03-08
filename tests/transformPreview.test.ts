@@ -33,7 +33,7 @@ describe("generateTransformPreview", () => {
     const sourceAfterPreview = await Bun.file(filePath).text();
 
     expect(preview.files).toHaveLength(1);
-    expect(preview.files[0]?.after).toContain('t("common.buy_now")');
+    expect(preview.files[0]?.after).toContain('t("home.page.button.buy_now")');
     expect(preview.files[0]?.diff).toContain("--- src/app/page.tsx");
     expect(sourceAfterPreview).toContain("<button>Buy now</button>");
   });

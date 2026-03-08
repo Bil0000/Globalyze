@@ -1,0 +1,102 @@
+import path from "node:path";
+
+import fs from "fs-extra";
+
+import type {
+  LocaleKeyReference,
+  ResolvedGlobalyzeConfig,
+  TranslationGraph
+} from "../types";
+import { readLocaleDictionary } from "../i18n/localeManager";
+import { buildLocaleFileContents } from "../i18n/writers/shared";
+import { resolveGlobalyzeRootDir, toRelativePosixPath } from "../utils/fileUtils";
+
+function getGraphPath(): string {
+  return path.join(
+    resolveGlobalyzeRootDir(),
+    ".globalyze",
+    "translationGraph.json"
+  );
+}
+
+function getLegacyGraphPath(): string {
+  return path.join(
+    resolveGlobalyzeRootDir(),
+    ".cache",
+    "globalyze",
+    "translationGraph.json"
+  );
+}
+
+export async function readTranslationGraph(): Promise<TranslationGraph> {
+  const graphPath = getGraphPath();
+
+  if (await fs.pathExists(graphPath)) {
+    return (await fs.readJson(graphPath)) as TranslationGraph;
+  }
+
+  const legacyGraphPath = getLegacyGraphPath();
+
+  if (!(await fs.pathExists(legacyGraphPath))) {
+    return {};
+  }
+
+  return (await fs.readJson(legacyGraphPath)) as TranslationGraph;
+}
+
+export async function writeTranslationGraph(graph: TranslationGraph): Promise<void> {
+  const graphPath = getGraphPath();
+  await fs.ensureDir(path.dirname(graphPath));
+  await fs.writeJson(graphPath, graph, { spaces: 2 });
+  await fs.remove(getLegacyGraphPath());
+}
+
+export async function updateTranslationGraph(
+  config: ResolvedGlobalyzeConfig,
+  references: readonly LocaleKeyReference[]
+): Promise<TranslationGraph> {
+  const sourceLocale = await readLocaleDictionary(config, config.sourceLocale);
+  const graph: TranslationGraph = {};
+  const referencedKeys = [...new Set(references.map((reference) => reference.key))]
+    .filter((key) => typeof sourceLocale[key] === "string");
+  const fileContents = buildLocaleFileContents(
+    config.sourceLocale,
+    Object.fromEntries(
+      referencedKeys.map((key) => [key, sourceLocale[key] ?? ""])
+    ),
+    Object.fromEntries(
+      referencedKeys.map((key) => [key, sourceLocale[key] ?? ""])
+    ),
+    config.localeStructure,
+    references
+  );
+
+  const localeFileByKey = new Map<string, string>();
+
+  for (const file of fileContents) {
+    for (const key of Object.keys(file.entries)) {
+      localeFileByKey.set(key, file.fileName);
+    }
+  }
+
+  for (const key of referencedKeys) {
+    const usages = references
+      .filter((reference) => reference.key === key)
+      .map((reference) => toRelativePosixPath(config.rootDir, reference.file));
+    const originFile = usages[0];
+
+    if (!originFile) {
+      continue;
+    }
+
+    graph[key] = {
+      text: sourceLocale[key] ?? "",
+      originFile,
+      localeFile: localeFileByKey.get(key) ?? "",
+      usages: [...new Set(usages)]
+    };
+  }
+
+  await writeTranslationGraph(graph);
+  return graph;
+}

@@ -16,6 +16,6 @@
     "jsx": "preserve",
     "outDir": "dist"
   },
-  "include": ["src", "tests", "globalyze.config.ts"],
+  "include": ["src", "tests", "packages", "globalyze.config.ts"],
   "exclude": ["examples/demo-nextjs", "dist", "node_modules"]
 }
