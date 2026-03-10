@@ -8,6 +8,7 @@ import {
 } from "@clack/prompts";
 
 import { executeReportCommand } from "../commands/report";
+import { executeAuditCommand } from "../commands/audit";
 import { executeRenameCommand } from "../commands/rename";
 import { executeScanCommand } from "../commands/scan";
 import { executeScoreCommand } from "../commands/score";
@@ -41,26 +42,27 @@ export async function launchInteractiveCLI(): Promise<void> {
       { label: "2. Sync translations", value: "sync" },
       { label: "3. Watch for changes", value: "watch" },
       { label: "4. Show localization report", value: "report" },
-      { label: "5. Clean unused translations", value: "clean" },
-      { label: "6. Inspect translation key", value: "inspect" },
-      { label: "7. View translation graph", value: "graph" },
-      { label: "8. Classify ownership", value: "classify" },
-      { label: "9. Search translations", value: "search" },
-      { label: "10. Inspect locale files", value: "locales" },
-      { label: "11. Run localization doctor", value: "doctor" },
-      { label: "12. Detect duplicate keys", value: "duplicates" },
-      { label: "13. Rename translation key", value: "rename" },
-      { label: "14. Change locale structure style", value: "style" },
-      { label: "15. Scan project for strings", value: "scan" },
-      { label: "16. Add languages to config", value: "languages" },
-      { label: "17. Remove dynamic translations", value: "dynamic-remove" },
-      { label: "18. Preview transformations", value: "preview" },
-      { label: "19. Generate translations", value: "translate" },
-      { label: "20. Assign translation owner", value: "owner" },
-      { label: "21. Lock or unlock a key", value: "locking" },
-      { label: "22. Analyze screenshot", value: "screenshot" },
-      { label: "23. Show project score", value: "score" },
-      { label: "24. Exit", value: "exit" }
+      { label: "5. Audit remaining extractable strings", value: "audit" },
+      { label: "6. Clean unused translations", value: "clean" },
+      { label: "7. Inspect translation key", value: "inspect" },
+      { label: "8. View translation graph", value: "graph" },
+      { label: "9. Classify ownership", value: "classify" },
+      { label: "10. Search translations", value: "search" },
+      { label: "11. Inspect locale files", value: "locales" },
+      { label: "12. Run localization doctor", value: "doctor" },
+      { label: "13. Detect duplicate keys", value: "duplicates" },
+      { label: "14. Rename translation key", value: "rename" },
+      { label: "15. Change locale structure style", value: "style" },
+      { label: "16. Scan project for strings", value: "scan" },
+      { label: "17. Add languages to config", value: "languages" },
+      { label: "18. Remove dynamic translations", value: "dynamic-remove" },
+      { label: "19. Preview transformations", value: "preview" },
+      { label: "20. Generate translations", value: "translate" },
+      { label: "21. Assign translation owner", value: "owner" },
+      { label: "22. Lock or unlock a key", value: "locking" },
+      { label: "23. Analyze screenshot", value: "screenshot" },
+      { label: "24. Show project score", value: "score" },
+      { label: "25. Exit", value: "exit" }
     ]
   });
 
@@ -83,6 +85,10 @@ export async function launchInteractiveCLI(): Promise<void> {
 
   if (action === "sync") {
     await executeSyncCommand();
+  }
+
+  if (action === "audit") {
+    await executeAuditCommand();
   }
 
   if (action === "languages") {

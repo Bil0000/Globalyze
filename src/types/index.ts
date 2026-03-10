@@ -36,6 +36,7 @@ export type ExtractedStringKind =
   | "jsx-text"
   | "jsx-expression-string"
   | "jsx-attribute"
+  | "object-property"
   | "jsx-dynamic";
 
 export interface GlobalyzeConfig {
@@ -92,6 +93,7 @@ export interface ExtractedString {
   column: number;
   kind: ExtractedStringKind;
   attributeName?: string;
+  propertyName?: string;
   componentName?: string;
   pageName?: string;
   pageNames?: string[];

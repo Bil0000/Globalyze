@@ -292,6 +292,17 @@ Finds unused locale keys. Use `--fix` to remove them from locale files.
 
 ### Inspection Commands
 
+### `globalyze audit`
+
+Runs a read-only extraction audit to show UI strings that are still left in source after globalization or sync.
+
+Use this to catch the remaining misses, including strings in JSX, attributes, and supported UI config object properties such as sidebar titles, tab labels, and field hints.
+
+```bash
+globalyze audit
+globalyze audit --fail-on-findings
+```
+
 ### `globalyze inspect <key>`
 
 Shows the value, locale file, source origin, usages, and governance metadata for a translation key.
@@ -495,6 +506,7 @@ Options:
 Globalyze includes read-only inspection commands for understanding the current localization state without rewriting code or locale files.
 
 ```bash
+globalyze audit
 globalyze inspect checkout.pay_button
 globalyze graph
 globalyze where checkout.pay_button

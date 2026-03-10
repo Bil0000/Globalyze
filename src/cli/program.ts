@@ -1,6 +1,7 @@
 import { Command } from "commander";
 
 import { registerChangeStyleCommand } from "../commands/changeStyle";
+import { registerAuditCommand } from "../commands/audit";
 import { registerClassifyCommand } from "../commands/classify";
 import { registerCleanCommand } from "../commands/clean";
 import { registerDoctorCommand } from "../commands/doctor";
@@ -48,6 +49,7 @@ export function buildProgram(version: string): Command {
       "  watch          Run Globalyze in development watch mode",
       "  report         Show localization statistics",
       "  clean          Remove unused translations",
+      "  audit          Audit remaining extractable UI strings",
       "",
       "Maintenance:",
       "  duplicates     Detect duplicate translation keys",
@@ -78,6 +80,7 @@ export function buildProgram(version: string): Command {
   registerInitCommand(program);
   registerGlobalizeCommand(program);
   registerSyncCommand(program);
+  registerAuditCommand(program);
   registerChangeStyleCommand(program);
   registerDynamicRemoveCommand(program);
   registerLanguagesCommand(program);

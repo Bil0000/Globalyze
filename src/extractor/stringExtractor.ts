@@ -15,7 +15,7 @@ import {
   type ResolvedFileLocalizationMetadata
 } from "../utils/nameResolver";
 
-const TRANSlatable_ATTRIBUTES = new Set([
+const TRANSLATABLE_ATTRIBUTES = new Set([
   "title",
   "placeholder",
   "aria-label",
@@ -23,7 +23,30 @@ const TRANSlatable_ATTRIBUTES = new Set([
   "alt",
   "label",
   "helperText",
-  "caption"
+  "caption",
+  "description",
+  "hint",
+  "tooltip",
+  "emptyMessage",
+  "errorMessage"
+]);
+
+const TRANSLATABLE_OBJECT_PROPERTIES = new Set([
+  "title",
+  "label",
+  "description",
+  "helperText",
+  "hint",
+  "placeholder",
+  "caption",
+  "tooltip",
+  "emptyMessage",
+  "errorMessage",
+  "ariaLabel",
+  "ariaDescription",
+  "tab",
+  "heading",
+  "subheading"
 ]);
 
 function parseSource(source: string, filePath: string): File {
@@ -62,7 +85,39 @@ export function normalizeUiText(value: string): string | null {
 }
 
 export function isTranslatableAttributeName(attributeName: string): boolean {
-  return TRANSlatable_ATTRIBUTES.has(attributeName);
+  return TRANSLATABLE_ATTRIBUTES.has(attributeName);
+}
+
+export function isTranslatableObjectPropertyName(propertyName: string): boolean {
+  return TRANSLATABLE_OBJECT_PROPERTIES.has(propertyName);
+}
+
+function resolvePropertyName(
+  node: t.Identifier | t.StringLiteral | t.NumericLiteral | t.BigIntLiteral | t.Expression | t.PrivateName
+): string | null {
+  if (t.isIdentifier(node)) {
+    return node.name;
+  }
+
+  if (t.isStringLiteral(node)) {
+    return node.value;
+  }
+
+  return null;
+}
+
+function extractStaticTextLiteral(
+  value: t.Expression | t.PatternLike | t.SpreadElement | t.ArgumentPlaceholder
+): string | null {
+  if (t.isStringLiteral(value)) {
+    return normalizeUiText(value.value);
+  }
+
+  if (t.isTemplateLiteral(value) && value.expressions.length === 0) {
+    return normalizeUiText(value.quasis.map((quasi) => quasi.value.cooked ?? "").join(""));
+  }
+
+  return null;
 }
 
 function getLocation(
@@ -213,6 +268,43 @@ export function extractStringsFromSource(
           t.isJSXIdentifier(path.parentPath.node.name)
             ? path.parentPath.node.name.name
             : undefined
+      });
+    },
+    ObjectProperty(path) {
+      if (path.node.computed) {
+        return;
+      }
+
+      const propertyName = resolvePropertyName(path.node.key);
+
+      if (!propertyName || !isTranslatableObjectPropertyName(propertyName)) {
+        return;
+      }
+
+      const text = extractStaticTextLiteral(path.node.value);
+
+      if (!text) {
+        return;
+      }
+
+      const location = getLocation(
+        path.node.loc?.start.line,
+        path.node.loc?.start.column
+      );
+
+      extracted.push({
+        text,
+        file: normalizedFilePath,
+        line: location.line,
+        column: location.column,
+        kind: "object-property",
+        propertyName,
+        componentName,
+        pageName,
+        pageNames,
+        ownershipConfidence,
+        unresolvedOwnership,
+        elementType: undefined
       });
     }
   });

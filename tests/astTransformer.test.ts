@@ -46,4 +46,43 @@ describe("transformFile", () => {
     expect(updatedSource).toContain('import { t } from "@/i18n";');
     expect(updatedSource).toContain('<button>{t("checkout.buy_button")}</button>');
   });
+
+  it("replaces translatable object-property strings used in UI config", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-transform-"));
+    tempDirectories.push(rootDir);
+
+    const filePath = path.join(rootDir, "src", "app", "dashboard", "page.tsx");
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(
+      filePath,
+      [
+        "const items = [",
+        '  { title: "Dashboard", href: "/dashboard" },',
+        '  { label: "Analytics", description: "Revenue trends" }',
+        "];",
+        "",
+        "export default function Page() {",
+        "  return <div>{items.length}</div>;",
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    const config = createTestConfig(rootDir);
+    const result = await transformFile(
+      filePath,
+      new Map([
+        ["Dashboard", "dashboard.sidebar_title"],
+        ["Analytics", "dashboard.tab_analytics"],
+        ["Revenue trends", "dashboard.revenue_trends"]
+      ]),
+      config
+    );
+    const updatedSource = await Bun.file(filePath).text();
+
+    expect(result.updated).toBe(true);
+    expect(updatedSource).toContain('title: t("dashboard.sidebar_title")');
+    expect(updatedSource).toContain('label: t("dashboard.tab_analytics")');
+    expect(updatedSource).toContain('description: t("dashboard.revenue_trends")');
+  });
 });

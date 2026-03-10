@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { extractDynamicTemplateFromExpression } from "../extractor/dynamicExtractor";
 import {
+  isTranslatableObjectPropertyName,
   isTranslatableAttributeName,
   normalizeUiText
 } from "../extractor/stringExtractor";
@@ -119,6 +120,28 @@ function findNearestFunctionBodyPath(
   }
 
   return null;
+}
+
+function resolveObjectPropertyName(
+  key: t.ObjectProperty["key"]
+): string | null {
+  if (t.isIdentifier(key)) {
+    return key.name;
+  }
+
+  if (t.isStringLiteral(key)) {
+    return key.value;
+  }
+
+  return null;
+}
+
+function normalizeStaticTemplateLiteral(node: t.TemplateLiteral): string | null {
+  if (node.expressions.length > 0) {
+    return null;
+  }
+
+  return normalizeUiText(node.quasis.map((quasi) => quasi.value.cooked ?? "").join(""));
 }
 
 export async function transformFile(
@@ -339,6 +362,43 @@ export function transformSource(
       path.node.value = t.jsxExpressionContainer(
         createTranslationExpression(adapter, key)
       );
+      const bodyPath = adapter.canInjectHook
+        ? findNearestFunctionBodyPath(path)
+        : null;
+      if (bodyPath) {
+        state.hookBodies.push(bodyPath);
+      }
+      state.transformed = true;
+      state.replacements += 1;
+    },
+    ObjectProperty(path) {
+      if (path.node.computed) {
+        return;
+      }
+
+      const propertyName = resolveObjectPropertyName(path.node.key);
+
+      if (!propertyName || !isTranslatableObjectPropertyName(propertyName)) {
+        return;
+      }
+
+      const text = t.isStringLiteral(path.node.value)
+        ? normalizeUiText(path.node.value.value)
+        : t.isTemplateLiteral(path.node.value)
+          ? normalizeStaticTemplateLiteral(path.node.value)
+          : null;
+
+      if (!text) {
+        return;
+      }
+
+      const key = keysByText.get(text);
+
+      if (!key) {
+        return;
+      }
+
+      path.node.value = createTranslationExpression(adapter, key);
       const bodyPath = adapter.canInjectHook
         ? findNearestFunctionBodyPath(path)
         : null;
