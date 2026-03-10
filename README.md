@@ -646,6 +646,73 @@ Use `i18nAdapter` in `globalyze.config.ts` to pick the runtime shape. For custom
 - `providerImportPath`
 - `providerComponentName`
 
+## Automatic Runtime Setup
+
+`globalyze init` now helps with runtime onboarding for built-in adapters.
+
+What it can do:
+
+- detect the project package manager from lockfiles
+- offer to install the selected adapter dependency
+- detect the framework runtime shape
+- safely auto-wire a provider when the entry file is predictable
+- fall back to `globalyze.runtime.md` when wiring would be unsafe
+- scaffold `src/components/GlobalyzeLanguageSwitcher.tsx`
+- scaffold `src/i18n/useLocale.ts`
+- scaffold `src/runtime/languageLabels.ts`
+- inject a floating dev-only language switcher when runtime wiring is safe
+
+Supported package manager detection order:
+
+- `bun.lockb` → `bun`
+- `pnpm-lock.yaml` → `pnpm`
+- `yarn.lock` → `yarn`
+- `package-lock.json` → `npm`
+
+Supported framework detection:
+
+- Next.js App Router
+- Next.js Pages Router
+- TanStack Start
+- Vite React
+
+Current auto-wiring support:
+
+- Next.js App Router via `app/layout.tsx` or `src/app/layout.tsx`
+- Vite React via `src/main.tsx` or `src/main.jsx`
+
+If wiring is skipped, Globalyze generates [globalyze.runtime.md](/Users/bilal/Documents/globalyze/globalyze.runtime.md) with:
+
+- adapter install guidance
+- provider integration notes
+- locale loading guidance
+- language switcher guidance
+
+## Automatic Language Switcher
+
+When runtime setup runs during `globalyze init` or `globalyze globalize`, Globalyze now scaffolds:
+
+- `src/components/GlobalyzeLanguageSwitcher.tsx`
+- `src/i18n/useLocale.ts`
+- `src/runtime/languageLabels.ts`
+
+The generated switcher:
+
+- reads languages from `globalyze.config.ts`
+- resolves readable labels such as `English`, `Français`, and `العربية`
+- uses an adapter-aware `useLocale()` hook
+- stays out of your production UI unless you place it yourself
+
+If the runtime entry file is predictable and wiring is safe, Globalyze also injects a floating development-only switcher so you can test locale changes immediately.
+
+Customize it by:
+
+- importing `GlobalyzeLanguageSwitcher` anywhere in your own UI
+- editing `src/runtime/languageLabels.ts` to override labels
+- replacing the default `<select>` UI in `src/components/GlobalyzeLanguageSwitcher.tsx`
+
+For `custom` adapters, Globalyze scaffolds a generic locale provider and leaves TODO comments in `src/i18n/useLocale.ts` where you should connect your own runtime.
+
 ## Using Globalyze On Another Repository
 
 Create a config file in the target repository and run Globalyze from there.

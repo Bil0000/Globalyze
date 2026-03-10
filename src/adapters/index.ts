@@ -6,6 +6,7 @@ export interface ResolvedAdapter {
   name: string;
   importPath?: string;
   translationFunctionName: string;
+  dependencyPackages: string[];
   hookName?: string;
   hookBindingName?: string;
   providerImportPath?: string;
@@ -51,6 +52,7 @@ function buildGenericAdapter(config: ResolvedGlobalyzeConfig): ResolvedAdapter {
     name: config.i18nAdapter,
     importPath: config.translationImportPath,
     translationFunctionName: config.translationFunctionName,
+    dependencyPackages: [],
     hookName: config.translationHookName,
     providerImportPath: config.providerImportPath,
     providerComponentName: config.providerComponentName,
@@ -65,6 +67,7 @@ function buildReactI18nextAdapter(): ResolvedAdapter {
     name: "react-i18next",
     importPath: "react-i18next",
     translationFunctionName: "t",
+    dependencyPackages: ["react-i18next"],
     hookName: "useTranslation",
     providerImportPath: "react-i18next",
     providerComponentName: "I18nextProvider",
@@ -88,6 +91,7 @@ function buildNextIntlAdapter(): ResolvedAdapter {
     name: "next-intl",
     importPath: "next-intl",
     translationFunctionName: "t",
+    dependencyPackages: ["next-intl"],
     hookName: "useTranslations",
     providerImportPath: "next-intl",
     providerComponentName: "NextIntlClientProvider",
@@ -109,6 +113,7 @@ function buildReactIntlAdapter(): ResolvedAdapter {
     name: "react-intl",
     importPath: "react-intl",
     translationFunctionName: "t",
+    dependencyPackages: ["react-intl"],
     hookName: "useIntl",
     providerImportPath: "react-intl",
     providerComponentName: "IntlProvider",

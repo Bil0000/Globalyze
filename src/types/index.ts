@@ -21,6 +21,20 @@ export type BuiltInI18nAdapter =
   | "react-intl"
   | "custom";
 
+export type PackageManagerName = "npm" | "pnpm" | "yarn" | "bun";
+
+export interface DetectedPackageManager {
+  name: PackageManagerName;
+  installCommand: string;
+}
+
+export type DetectedFramework =
+  | "next-app-router"
+  | "next-pages-router"
+  | "tanstack-start"
+  | "vite-react"
+  | "unknown";
+
 export interface TranslationGovernanceConfig {
   enabled: boolean;
   failOnLockedChange: boolean;

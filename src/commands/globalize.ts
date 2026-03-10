@@ -1,12 +1,19 @@
 import path from "node:path";
 
 import { Command } from "commander";
+import { confirm, isCancel } from "@clack/prompts";
 
 import { resolveI18nAdapter } from "../adapters";
+import {
+  inspectRuntimeProviderTarget,
+  setupRuntimeProvider
+} from "../runtime/providerWiring";
 import { executeSyncCommand } from "./sync";
 import type { GlobalyzeConfig } from "../types";
-import { loadGlobalyzeConfig, writeTextFile } from "../utils/fileUtils";
+import { GlobalyzeError } from "../utils/errors";
+import { loadGlobalyzeConfig } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
+import { detectPackageManager } from "../utils/packageManager";
 import { logMigrationHint } from "../utils/progress";
 
 function buildOverrides(options: {
@@ -19,38 +26,51 @@ function buildOverrides(options: {
   };
 }
 
-async function writeAdapterScaffold(
+async function maybeWireRuntimeDuringGlobalize(
   config: Awaited<ReturnType<typeof loadGlobalyzeConfig>>
-): Promise<string | null> {
-  const adapter = resolveI18nAdapter(config);
+): Promise<void> {
+  const packageManager = await detectPackageManager(config.rootDir);
+  let confirmWiring: boolean | undefined;
 
-  if (!adapter.canInjectProvider) {
-    return null;
+  if (process.stdin.isTTY && process.stdout.isTTY) {
+    const preview = await inspectRuntimeProviderTarget(config);
+
+    if (preview.canAutoWire) {
+      const decision = await confirm({
+        message: `Globalyze can automatically wire the runtime provider.\n\nDetected framework: ${preview.framework}\nEntry file: ${preview.entryFile ? path.relative(config.rootDir, preview.entryFile) : "not detected"}\n\nProceed?`,
+        initialValue: true
+      });
+
+      if (isCancel(decision)) {
+        throw new GlobalyzeError("Runtime provider setup was cancelled.");
+      }
+
+      confirmWiring = decision;
+    }
+  } else {
+    confirmWiring = false;
   }
 
-  const scaffoldPath = path.join(config.rootDir, "globalyze.runtime.md");
+  const result = await setupRuntimeProvider(config, packageManager, {
+    confirmWiring
+  });
 
-  await writeTextFile(
-    scaffoldPath,
-    [
-      `# Globalyze Runtime Integration`,
-      ``,
-      `Adapter: ${adapter.name}`,
-      ``,
-      `Globalyze updated source files to use \`${adapter.translationFunctionName}\`.`,
-      `Wire the runtime provider manually if your app entrypoint is ambiguous.`,
-      ``,
-      adapter.providerComponentName && adapter.providerImportPath
-        ? `Suggested provider: \`${adapter.providerComponentName}\` from \`${adapter.providerImportPath}\``
-        : `No provider scaffold is available for this adapter.`,
-      adapter.hookName
-        ? `Suggested hook: \`${adapter.hookName}\` from \`${adapter.importPath ?? ""}\``
-        : `No hook injection is required for this adapter.`,
-      ""
-    ].join("\n")
-  );
+  if (result.wired && result.entryFile) {
+    logger.success(`Wired runtime provider in ${result.entryFile}`);
+  } else if (result.guidancePath) {
+    logger.warn(result.skippedReason ?? "Automatic runtime wiring was skipped.");
+    logger.info(`Generated runtime guidance at ${result.guidancePath}`);
+  }
 
-  return scaffoldPath;
+  if (result.languageSwitcherPath) {
+    logger.success("Language switcher generated");
+    logger.info(
+      'Import the switcher anywhere in your UI:\nimport { GlobalyzeLanguageSwitcher } from "@/components/GlobalyzeLanguageSwitcher"'
+    );
+  }
+  if (result.devSwitcherInjected) {
+    logger.success("Dev language switcher enabled");
+  }
 }
 
 export function registerGlobalizeCommand(program: Command): void {
@@ -103,18 +123,11 @@ export async function executeGlobalizeCommand(
   logger.info(`Using ${adapter.name} adapter for migration.`);
   logMigrationHint();
 
-  const scaffoldPath = await logger.step(
-    "Preparing runtime integration guidance",
-    () => writeAdapterScaffold(config),
-    (result) =>
-      result ? `Generated runtime guidance at ${result}` : "No runtime scaffold was required"
+  await logger.step(
+    "Preparing runtime integration",
+    () => maybeWireRuntimeDuringGlobalize(config),
+    "Runtime integration prepared"
   );
-
-  if (adapter.canInjectProvider && scaffoldPath) {
-    logger.warn(
-      "Provider injection was left manual because the project entrypoint could not be identified confidently."
-    );
-  }
 
   const result = await executeSyncCommand(options);
   logger.newline();

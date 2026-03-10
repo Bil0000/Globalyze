@@ -34,6 +34,14 @@ describe("config commands", () => {
       path.join(rootDir, "globalyze.config.ts"),
       "utf8"
     );
+    const languageSwitcher = await readFile(
+      path.join(rootDir, "src", "components", "GlobalyzeLanguageSwitcher.tsx"),
+      "utf8"
+    );
+    const localeHook = await readFile(
+      path.join(rootDir, "src", "i18n", "useLocale.ts"),
+      "utf8"
+    );
 
     expect(contents).toContain('sourceDir: "src"');
     expect(contents).toContain('localesDir: "locales"');
@@ -53,6 +61,8 @@ describe("config commands", () => {
     expect(contents).toContain("aiBatchSize: 20");
     expect(contents).toContain('translationImportPath: "@/i18n"');
     expect(contents).toContain('translationFunctionName: "t"');
+    expect(languageSwitcher).toContain("GlobalyzeLanguageSwitcher");
+    expect(localeHook).toContain("useLocale");
   });
 
   it("infers editable translation instructions from the current app", async () => {

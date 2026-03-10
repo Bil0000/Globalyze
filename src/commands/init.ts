@@ -1,19 +1,33 @@
+import path from "node:path";
+import fs from "fs-extra";
+
 import { Command } from "commander";
 import { confirm, isCancel, select, text } from "@clack/prompts";
 
 import { detectProjectLanguages } from "../config/languageDetection";
 import { inferTranslationInstructions } from "../context/appContext";
 import {
+  inspectRuntimeProviderTarget,
+  setupRuntimeProvider
+} from "../runtime/providerWiring";
+import {
   createDefaultConfigContents,
   DEFAULT_LOCALE_STRUCTURE,
+  loadGlobalyzeConfig,
   normalizeLanguageCodes,
   pathExists,
   writeTextFile
 } from "../utils/fileUtils";
+import {
+  buildPackageInstallInvocation,
+  detectPackageManager,
+  installPackages
+} from "../utils/packageManager";
 import { GlobalyzeError } from "../utils/errors";
 import { logger } from "../utils/logger";
 import type {
   BuiltInI18nAdapter,
+  DetectedPackageManager,
   LocaleStructureConfig,
   LocaleFileFormat,
   TranslationGovernanceConfig
@@ -145,6 +159,9 @@ export async function executeInitCommand(
     dynamicExtraction?: boolean;
     i18nAdapter?: BuiltInI18nAdapter;
     governance?: TranslationGovernanceConfig;
+    installAdapterDependency?: boolean;
+    packageManager?: DetectedPackageManager["name"];
+    wireRuntime?: boolean;
   } = {}
 ): Promise<void> {
   const configPath = "globalyze.config.ts";
@@ -164,6 +181,21 @@ export async function executeInitCommand(
   const dynamicExtraction =
     options.dynamicExtraction ?? (await promptDynamicExtraction());
   const governance = options.governance ?? (await promptGovernance());
+  const detectedPackageManager = await detectPackageManager(process.cwd());
+  const packageManager =
+    options.packageManager && options.packageManager !== detectedPackageManager.name
+      ? {
+          name: options.packageManager,
+          installCommand:
+            options.packageManager === "bun"
+              ? "bun add"
+              : options.packageManager === "pnpm"
+                ? "pnpm add"
+                : options.packageManager === "yarn"
+                  ? "yarn add"
+                  : "npm install"
+        }
+      : detectedPackageManager;
 
   await writeTextFile(
     configPath,
@@ -182,6 +214,194 @@ export async function executeInitCommand(
     }`
   );
   logger.info("Added editable translationInstructions based on the current app.");
+  await maybeInstallAdapterDependency(
+    getAdapterDependencyPackages(i18nAdapter),
+    packageManager,
+    options.installAdapterDependency
+  );
+
+  await fs.ensureDir(path.join(process.cwd(), "src"));
+  const config = await loadGlobalyzeConfig(configPath);
+  await maybeSetupRuntimeProvider(config, packageManager, options.wireRuntime);
+}
+
+function getAdapterDependencyPackages(
+  adapter: BuiltInI18nAdapter
+): string[] {
+  if (adapter === "react-i18next") {
+    return ["react-i18next"];
+  }
+
+  if (adapter === "next-intl") {
+    return ["next-intl"];
+  }
+
+  if (adapter === "react-intl") {
+    return ["react-intl"];
+  }
+
+  return [];
+}
+
+async function maybeInstallAdapterDependency(
+  packages: readonly string[],
+  detectedPackageManager: DetectedPackageManager,
+  installAdapterDependency?: boolean
+): Promise<void> {
+  if (packages.length === 0) {
+    return;
+  }
+
+  logger.info(`Selected adapter dependency: ${packages.join(", ")}`);
+  logger.info(`Detected package manager: ${detectedPackageManager.name}`);
+
+  let selectedPackageManager = detectedPackageManager;
+  let shouldInstall = installAdapterDependency;
+
+  if (
+    shouldInstall === undefined &&
+    process.stdin.isTTY &&
+    process.stdout.isTTY
+  ) {
+    const decision = await select({
+      message: `Install adapter dependency?\n\n${buildPackageInstallInvocation(detectedPackageManager, packages).displayCommand}`,
+      initialValue: "yes",
+      options: [
+        { label: "Yes", value: "yes" },
+        { label: "No", value: "no" },
+        { label: "Change package manager", value: "change" }
+      ]
+    });
+
+    if (isCancel(decision)) {
+      throw new GlobalyzeError("Adapter installation setup was cancelled.");
+    }
+
+    if (decision === "change") {
+      const packageManagerName = await select({
+        message: "Choose package manager",
+        initialValue: detectedPackageManager.name,
+        options: [
+          { label: "pnpm", value: "pnpm" },
+          { label: "npm", value: "npm" },
+          { label: "yarn", value: "yarn" },
+          { label: "bun", value: "bun" }
+        ]
+      });
+
+      if (isCancel(packageManagerName)) {
+        throw new GlobalyzeError("Adapter installation setup was cancelled.");
+      }
+
+      selectedPackageManager = {
+        name: packageManagerName,
+        installCommand:
+          packageManagerName === "bun"
+            ? "bun add"
+            : packageManagerName === "pnpm"
+              ? "pnpm add"
+              : packageManagerName === "yarn"
+                ? "yarn add"
+                : "npm install"
+      };
+      shouldInstall = true;
+    } else {
+      shouldInstall = decision === "yes";
+    }
+  }
+
+  const invocation = buildPackageInstallInvocation(
+    selectedPackageManager,
+    packages
+  );
+
+  if (shouldInstall) {
+    await logger.step(
+      "Installing adapter dependency",
+      () => installPackages(selectedPackageManager, packages, process.cwd()),
+      () => `Installed ${packages.join(", ")}`
+    );
+    return;
+  }
+
+  logger.info(`Run \`${invocation.displayCommand}\` manually when ready.`);
+}
+
+async function maybeSetupRuntimeProvider(
+  config: Awaited<ReturnType<typeof loadGlobalyzeConfig>>,
+  packageManager: DetectedPackageManager,
+  wireRuntime?: boolean
+): Promise<void> {
+  let shouldWire = wireRuntime;
+
+  if (
+    shouldWire === undefined &&
+    (!process.stdin.isTTY || !process.stdout.isTTY)
+  ) {
+    shouldWire = false;
+  }
+
+  if (
+    shouldWire === undefined &&
+    process.stdin.isTTY &&
+    process.stdout.isTTY
+  ) {
+    const preview = await inspectRuntimeProviderTarget(config);
+
+    const decision = await confirm({
+      message: `Globalyze can automatically wire the runtime provider.\n\nDetected framework: ${preview.framework}\nEntry file: ${preview.entryFile ? path.relative(config.rootDir, preview.entryFile) : "not detected"}\n\nProceed?`,
+      initialValue: true
+    });
+
+    if (isCancel(decision)) {
+      throw new GlobalyzeError("Runtime provider setup was cancelled.");
+    }
+
+    if (!decision) {
+      const guidance = await setupRuntimeProvider(config, packageManager, {
+        confirmWiring: false
+      });
+      if (guidance.guidancePath) {
+        logger.info(`Generated runtime guidance at ${guidance.guidancePath}`);
+      }
+      if (guidance.languageSwitcherPath) {
+        logger.info(
+          `Generated language switcher example at ${guidance.languageSwitcherPath}`
+        );
+      }
+      return;
+    }
+
+    shouldWire = true;
+  }
+
+  const result = await setupRuntimeProvider(config, packageManager, {
+    confirmWiring: shouldWire
+  });
+
+  if (result.wired && result.entryFile) {
+    logger.success(`Wired runtime provider in ${result.entryFile}`);
+  } else if (result.guidancePath) {
+    logger.warn(result.skippedReason ?? "Automatic runtime wiring was skipped.");
+    logger.info(`Generated runtime guidance at ${result.guidancePath}`);
+  }
+
+  if (result.languageSwitcherPath) {
+    logger.success(`Language switcher generated at ${result.languageSwitcherPath}`);
+  }
+  if (result.languageLabelsPath) {
+    logger.info(`Language labels helper ready at ${result.languageLabelsPath}`);
+  }
+  if (result.localeHookPath) {
+    logger.info(`Locale hook ready at ${result.localeHookPath}`);
+  }
+  if (result.devSwitcherInjected) {
+    logger.success("Dev language switcher enabled");
+  }
+  if ((result.skippedArtifacts?.length ?? 0) > 0) {
+    const skippedArtifacts = result.skippedArtifacts ?? [];
+    logger.info(`Skipped existing runtime files: ${skippedArtifacts.join(", ")}`);
+  }
 }
 
 async function promptDynamicExtraction(): Promise<boolean> {
