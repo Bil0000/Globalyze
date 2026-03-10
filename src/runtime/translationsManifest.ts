@@ -155,6 +155,10 @@ function buildManifestContents(
     "",
     "export type TranslationLocale = keyof typeof translations;",
     "",
+    "export function getTranslations(locale: string) {",
+    `  return translations[locale as TranslationLocale] ?? translations[${JSON.stringify(config.sourceLocale)}];`,
+    "}",
+    "",
     "export default translations;",
     ""
   ].join("\n");

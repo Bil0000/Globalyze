@@ -85,4 +85,57 @@ describe("transformFile", () => {
     expect(updatedSource).toContain('label: t("dashboard.tab_analytics")');
     expect(updatedSource).toContain('description: t("dashboard.revenue_trends")');
   });
+
+  it("replaces data-driven table and chart config strings with translation calls", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-transform-"));
+    tempDirectories.push(rootDir);
+
+    const filePath = path.join(
+      rootDir,
+      "src",
+      "app",
+      "dashboard",
+      "crm",
+      "_components",
+      "crm.config.ts"
+    );
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(
+      filePath,
+      [
+        "const rows = [",
+        '  { status: "Blocked", source: "Referral", reviewer: "Mona", owner: "Ops" },',
+        '  { month: "January", header: "Revenue", nextAction: "Follow up" }',
+        "];",
+        "",
+        "export default rows;",
+        ""
+      ].join("\n")
+    );
+
+    const config = createTestConfig(rootDir);
+    const result = await transformFile(
+      filePath,
+      new Map([
+        ["Blocked", "crm.status_blocked"],
+        ["Referral", "crm.source_referral"],
+        ["Mona", "crm.reviewer_mona"],
+        ["Ops", "crm.owner_ops"],
+        ["January", "crm.month_january"],
+        ["Revenue", "crm.header_revenue"],
+        ["Follow up", "crm.next_action_follow_up"]
+      ]),
+      config
+    );
+    const updatedSource = await Bun.file(filePath).text();
+
+    expect(result.updated).toBe(true);
+    expect(updatedSource).toContain('status: t("crm.status_blocked")');
+    expect(updatedSource).toContain('source: t("crm.source_referral")');
+    expect(updatedSource).toContain('reviewer: t("crm.reviewer_mona")');
+    expect(updatedSource).toContain('owner: t("crm.owner_ops")');
+    expect(updatedSource).toContain('month: t("crm.month_january")');
+    expect(updatedSource).toContain('header: t("crm.header_revenue")');
+    expect(updatedSource).toContain('nextAction: t("crm.next_action_follow_up")');
+  });
 });

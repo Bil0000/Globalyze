@@ -10,6 +10,7 @@ import type {
 } from "../types";
 import { extractDynamicTemplateFromExpression } from "../extractor/dynamicExtractor";
 import {
+  isDataDrivenTranslatablePropertyName,
   isTranslatableObjectPropertyName,
   isTranslatableAttributeName,
   normalizeUiText
@@ -378,7 +379,11 @@ export function transformSource(
 
       const propertyName = resolveObjectPropertyName(path.node.key);
 
-      if (!propertyName || !isTranslatableObjectPropertyName(propertyName)) {
+      if (
+        !propertyName ||
+        (!isTranslatableObjectPropertyName(propertyName) &&
+          !isDataDrivenTranslatablePropertyName(propertyName, filePath))
+      ) {
         return;
       }
 

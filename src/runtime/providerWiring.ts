@@ -25,6 +25,7 @@ export interface RuntimeWiringPreview {
   framework: DetectedFramework;
   entryFile?: string;
   canAutoWire: boolean;
+  alreadyWired?: boolean;
   skippedReason?: string;
 }
 
@@ -32,6 +33,7 @@ export interface RuntimeWiringResult {
   framework: DetectedFramework;
   entryFile?: string;
   wired: boolean;
+  alreadyWired?: boolean;
   guidancePath?: string;
   skippedReason?: string;
   languageSwitcherPath?: string;
@@ -248,9 +250,22 @@ async function detectRuntimeEntry(
 ): Promise<RuntimeEntryCandidate | null> {
   const candidates: Record<DetectedFramework, string[]> = {
     "next-app-router": ["app/layout.tsx", "src/app/layout.tsx"],
-    "next-pages-router": [],
-    "tanstack-start": [],
+    "next-pages-router": ["pages/_app.tsx", "src/pages/_app.tsx"],
+    "tanstack-start": ["src/routes/__root.tsx", "routes/__root.tsx"],
+    remix: ["app/root.tsx", "app/root.jsx"],
+    "react-router": [
+      "src/main.tsx",
+      "src/main.jsx",
+      "src/index.tsx",
+      "src/index.jsx"
+    ],
     "vite-react": ["src/main.tsx", "src/main.jsx"],
+    "plain-react": [
+      "src/main.tsx",
+      "src/main.jsx",
+      "src/index.tsx",
+      "src/index.jsx"
+    ],
     unknown: []
   };
 
@@ -268,6 +283,31 @@ async function detectRuntimeEntry(
   return null;
 }
 
+async function detectExistingRuntimeWiring(
+  entryFilePath: string,
+  adapterName: string,
+  providerComponentName?: string
+): Promise<boolean> {
+  const source = await readTextFile(entryFilePath);
+  const ast = parseModule(source, entryFilePath);
+
+  if (hasComponentUsage(ast, "GlobalyzeLocaleProvider")) {
+    return true;
+  }
+
+  if (hasComponentUsage(ast, "GlobalyzeLanguageSwitcher")) {
+    return true;
+  }
+
+  if (providerComponentName && hasComponentUsage(ast, providerComponentName)) {
+    return true;
+  }
+
+  return !requiresGeneratedLocaleProvider(adapterName) && !!providerComponentName
+    ? false
+    : false;
+}
+
 export async function inspectRuntimeProviderTarget(
   config: ResolvedGlobalyzeConfig
 ): Promise<RuntimeWiringPreview> {
@@ -283,7 +323,15 @@ export async function inspectRuntimeProviderTarget(
     };
   }
 
-  if (framework !== "next-app-router" && framework !== "vite-react") {
+  if (
+    framework !== "next-app-router" &&
+    framework !== "next-pages-router" &&
+    framework !== "tanstack-start" &&
+    framework !== "remix" &&
+    framework !== "vite-react" &&
+    framework !== "react-router" &&
+    framework !== "plain-react"
+  ) {
     return {
       framework,
       entryFile: entry.filePath,
@@ -309,11 +357,128 @@ export async function inspectRuntimeProviderTarget(
     };
   }
 
+  if (
+    await detectExistingRuntimeWiring(
+      entry.filePath,
+      adapter.name,
+      adapter.providerComponentName
+    )
+  ) {
+    return {
+      framework,
+      entryFile: entry.filePath,
+      canAutoWire: false,
+      alreadyWired: true,
+      skippedReason: "Runtime provider is already wired in the detected entry file."
+    };
+  }
+
   return {
     framework,
     entryFile: entry.filePath,
     canAutoWire: true
   };
+}
+
+function containsJsxComponentName(
+  node: t.JSXElement | t.JSXFragment,
+  componentName: string
+): boolean {
+  let found = false;
+
+  traverse(
+    t.file(t.program([t.expressionStatement(node)])),
+    {
+      JSXOpeningElement(path) {
+        if (t.isJSXIdentifier(path.node.name, { name: componentName })) {
+          found = true;
+          path.stop();
+        }
+      }
+    },
+    undefined,
+    undefined,
+    undefined
+  );
+
+  return found;
+}
+
+async function wireComponentReturnFile(
+  filePath: string,
+  options: {
+    adapterName: string;
+    providerImportPath?: string;
+    providerComponentName?: string;
+    localeHookImportPath: string;
+    switcherImportPath: string;
+    requiredComponentNames: string[];
+  }
+): Promise<{ updated: boolean; devSwitcherInjected: boolean }> {
+  const source = await readTextFile(filePath);
+  const ast = parseModule(source, filePath);
+  let matches = 0;
+  let updated = false;
+  let devSwitcherInjected = false;
+  const hasExistingSwitcher = hasComponentUsage(ast, "GlobalyzeLanguageSwitcher");
+
+  traverse(ast, {
+    ReturnStatement(path) {
+      const argument = path.node.argument;
+
+      if (!argument || (!t.isJSXElement(argument) && !t.isJSXFragment(argument))) {
+        return;
+      }
+
+      const hasRequiredMarker = options.requiredComponentNames.some((name) =>
+        containsJsxComponentName(argument, name)
+      );
+
+      if (!hasRequiredMarker) {
+        return;
+      }
+
+      matches += 1;
+      const children: (t.JSXElement | t.JSXFragment | t.JSXExpressionContainer)[] = [
+        buildWrappedApplication(argument, {
+          adapterName: options.adapterName,
+          providerComponentName: options.providerComponentName,
+          wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
+        })
+      ];
+
+      if (!hasExistingSwitcher) {
+        children.push(buildDevSwitcherElement());
+        devSwitcherInjected = true;
+      }
+
+      path.node.argument = t.jsxFragment(
+        t.jsxOpeningFragment(),
+        t.jsxClosingFragment(),
+        children
+      );
+      updated = true;
+      path.stop();
+    }
+  });
+
+  if (matches !== 1) {
+    return { updated: false, devSwitcherInjected: false };
+  }
+
+  if (options.providerImportPath && options.providerComponentName) {
+    ensureImport(ast, options.providerImportPath, options.providerComponentName);
+  }
+
+  if (requiresGeneratedLocaleProvider(options.adapterName)) {
+    ensureImport(ast, options.localeHookImportPath, "GlobalyzeLocaleProvider");
+  }
+
+  ensureImport(ast, options.switcherImportPath, "GlobalyzeLanguageSwitcher");
+
+  const output = generate(ast, { retainLines: true }, source);
+  await writeTextFile(filePath, `${output.code}\n`);
+  return { updated, devSwitcherInjected };
 }
 
 async function wireNextAppRouterLayout(
@@ -328,10 +493,18 @@ async function wireNextAppRouterLayout(
 ): Promise<{ updated: boolean; devSwitcherInjected: boolean }> {
   const source = await readTextFile(filePath);
   const ast = parseModule(source, filePath);
-  let matchedChildren = 0;
+  let matchedBodies = 0;
   let updated = false;
   let devSwitcherInjected = false;
   const hasExistingSwitcher = hasComponentUsage(ast, "GlobalyzeLanguageSwitcher");
+  const hasExistingLocaleProvider = hasComponentUsage(
+    ast,
+    "GlobalyzeLocaleProvider"
+  );
+  const hasExistingAdapterProvider =
+    options.providerComponentName
+      ? hasComponentUsage(ast, options.providerComponentName)
+      : false;
 
   traverse(ast, {
     JSXElement(path) {
@@ -339,31 +512,31 @@ async function wireNextAppRouterLayout(
         return;
       }
 
-      const childIndex = path.node.children.findIndex(
-        (child) =>
-          t.isJSXExpressionContainer(child) &&
-          t.isIdentifier(child.expression, { name: "children" })
-      );
-
-      if (childIndex < 0) {
+      if (
+        hasExistingLocaleProvider ||
+        hasExistingAdapterProvider ||
+        path.node.children.length === 0
+      ) {
         return;
       }
 
-      matchedChildren += 1;
-      const bodyChild = path.node.children[childIndex];
-
-      if (!bodyChild || !t.isJSXExpressionContainer(bodyChild)) {
-        return;
-      }
+      matchedBodies += 1;
 
       const replacementChildren: (
         t.JSXElement | t.JSXFragment | t.JSXExpressionContainer
       )[] = [
-        buildWrappedApplication(t.jsxExpressionContainer(t.identifier("children")), {
+        buildWrappedApplication(
+          t.jsxFragment(
+            t.jsxOpeningFragment(),
+            t.jsxClosingFragment(),
+            path.node.children
+          ),
+          {
           adapterName: options.adapterName,
           providerComponentName: options.providerComponentName,
           wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
-        })
+          }
+        )
       ];
 
       if (!hasExistingSwitcher) {
@@ -371,13 +544,13 @@ async function wireNextAppRouterLayout(
         devSwitcherInjected = true;
       }
 
-      path.node.children.splice(childIndex, 1, ...replacementChildren);
+      path.node.children = replacementChildren;
       updated = true;
       path.stop();
     }
   });
 
-  if (matchedChildren !== 1) {
+  if (matchedBodies !== 1) {
     return { updated: false, devSwitcherInjected: false };
   }
 
@@ -493,15 +666,34 @@ function buildGuidanceContents(
     adapter.dependencyPackages.length > 0
       ? `${packageManager.installCommand} ${adapter.dependencyPackages.join(" ")}`
       : null;
+  const runtimeFiles = [
+    "`src/lib/i18n/translations.generated.ts` if it exists",
+    "`src/i18n/useLocale.ts` or `src/i18n/useLocale.tsx` if generated",
+    "`src/components/GlobalyzeLanguageSwitcher.tsx` if generated",
+    "`src/runtime/languageLabels.ts` if generated"
+  ];
 
   return [
     "# Globalyze Runtime Integration",
     "",
-    `Adapter: ${adapter.name}`,
-    `Framework: ${framework}`,
-    `Entry file: ${entry?.label ?? "not detected"}`,
+    "Globalyze skipped automatic runtime wiring because the detected runtime entry could not be updated safely. Use this guide to complete the integration manually.",
+    "",
+    "## Detected setup",
+    "",
+    `- Adapter: \`${adapter.name}\``,
+    `- Framework: \`${framework}\``,
+    `- Entry file: \`${entry?.label ?? "not detected"}\``,
+    `- Source locale: \`${config.sourceLocale}\``,
+    `- Languages: ${config.languages.map((language) => `\`${language}\``).join(", ")}`,
+    `- Locale structure: \`${config.localeStructure.structure}\` \`${config.localeStructure.format}\` split by \`${config.localeStructure.splitStrategy}\``,
     "",
     `Automatic wiring was skipped: ${skippedReason}`,
+    "",
+    "## Generated files to reuse",
+    "",
+    ...runtimeFiles.map((file) => `- ${file}`),
+    "",
+    "Do not create a separate hand-written locale manifest if `translations.generated.ts` already exists. Reuse the generated files so future `globalyze sync` and `globalyze style` runs remain compatible.",
     "",
     "## 1. Install adapter",
     installCommand
@@ -514,15 +706,33 @@ function buildGuidanceContents(
       : "Connect the generated GlobalyzeLocaleProvider to your runtime if you need locale state.",
     "",
     "## 3. Load locale files",
-    "Refresh or import the generated locale manifest used by your runtime integration.",
+    "Use the generated locale manifest or generated locale modules as the runtime source of messages for the active locale.",
+    "Prefer `translations.generated.ts` if present, because it is refreshed by Globalyze after locale structure changes.",
     "",
-    "## 4. Add a language switcher",
+    "## 4. Keep translations reactive",
+    "Client-visible text that should change immediately after a locale switch should use the generated locale hook / translation hook rather than a static top-level `t()` import.",
+    "",
+    "## 5. Add a language switcher",
     `Switcher component: \`${path.relative(config.rootDir, paths.languageSwitcherPath)}\``,
     `Locale hook: \`${path.relative(config.rootDir, paths.localeHookPath)}\``,
     `Language labels: \`${path.relative(config.rootDir, paths.languageLabelsPath)}\``,
     "",
-    "## 5. Add a language switcher to your UI",
-    'Import `GlobalyzeLanguageSwitcher` anywhere in your app or keep the dev-only floating switcher.',
+    "Place `GlobalyzeLanguageSwitcher` in a visible part of the UI such as a sidebar footer, top bar, or preferences panel.",
+    "",
+    "## 6. Validate the runtime integration",
+    "",
+    "- Switch languages in the UI and confirm translated client text updates immediately.",
+    "- Refresh the page and confirm the chosen locale persists if persistence was added.",
+    "- Confirm the app still resolves locale files correctly after the latest `globalyze style` or `globalyze sync` run.",
+    "- If the document language is managed at runtime, confirm the `html[lang]` value changes with the active locale.",
+    "",
+    "## 7. If you are an AI agent completing this task",
+    "",
+    "- Read the existing runtime files before editing anything.",
+    "- Reuse generated files instead of building a parallel i18n architecture.",
+    "- Prefer `useLocale()` and `useTranslation()` patterns for reactive client UI.",
+    "- Do not manually enumerate locale imports if `translations.generated.ts` already exists.",
+    "- Keep the result compatible with future `globalyze sync` and `globalyze style` runs.",
     ""
   ].join("\n");
 }
@@ -578,6 +788,22 @@ export async function setupRuntimeProvider(
   const preview = await inspectRuntimeProviderTarget(config);
   const framework = preview.framework;
   const artifacts = await ensureLanguageArtifacts(config);
+
+  if (preview.alreadyWired) {
+    return {
+      framework,
+      entryFile: preview.entryFile,
+      wired: false,
+      alreadyWired: true,
+      skippedReason: preview.skippedReason,
+      languageSwitcherPath: artifacts.switcherPath,
+      localeHookPath: artifacts.localeHookPath,
+      languageLabelsPath: artifacts.labelsPath,
+      createdArtifacts: artifacts.created,
+      skippedArtifacts: artifacts.skipped,
+      devSwitcherInjected: false
+    };
+  }
 
   if (!preview.canAutoWire) {
     const guidance = await writeRuntimeGuidance(
@@ -648,7 +874,17 @@ export async function setupRuntimeProvider(
   const wiringResult =
     framework === "next-app-router"
       ? await wireNextAppRouterLayout(entry.filePath, providerOptions)
-      : await wireViteEntry(entry.filePath, providerOptions);
+      : framework === "next-pages-router"
+        ? await wireComponentReturnFile(entry.filePath, {
+            ...providerOptions,
+            requiredComponentNames: ["Component"]
+          })
+        : framework === "tanstack-start" || framework === "remix"
+          ? await wireComponentReturnFile(entry.filePath, {
+              ...providerOptions,
+              requiredComponentNames: ["Outlet"]
+            })
+          : await wireViteEntry(entry.filePath, providerOptions);
 
   if (!wiringResult.updated) {
     const guidance = await writeRuntimeGuidance(

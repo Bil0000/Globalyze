@@ -1,4 +1,4 @@
-export type SupportedFileExtension = ".ts" | ".tsx" | ".js" | ".jsx";
+export type SupportedFileExtension = ".ts" | ".tsx" | ".js" | ".jsx" | ".json";
 export type LocaleFileFormat = "json" | "js" | "ts";
 export type LocaleFileStructure = "single" | "multiple";
 export type LocaleSplitStrategy = "page" | "component";
@@ -32,7 +32,10 @@ export type DetectedFramework =
   | "next-app-router"
   | "next-pages-router"
   | "tanstack-start"
+  | "remix"
+  | "react-router"
   | "vite-react"
+  | "plain-react"
   | "unknown";
 
 export interface TranslationGovernanceConfig {

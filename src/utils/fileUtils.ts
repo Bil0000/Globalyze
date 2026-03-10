@@ -19,7 +19,8 @@ export const SUPPORTED_EXTENSIONS: readonly SupportedFileExtension[] = [
   ".ts",
   ".tsx",
   ".js",
-  ".jsx"
+  ".jsx",
+  ".json"
 ];
 
 export const DEFAULT_IGNORE = [

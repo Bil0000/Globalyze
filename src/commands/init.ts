@@ -348,38 +348,46 @@ async function maybeSetupRuntimeProvider(
   ) {
     const preview = await inspectRuntimeProviderTarget(config);
 
-    const decision = await confirm({
-      message: `Globalyze can automatically wire the runtime provider.\n\nDetected framework: ${preview.framework}\nEntry file: ${preview.entryFile ? path.relative(config.rootDir, preview.entryFile) : "not detected"}\n\nProceed?`,
-      initialValue: true
-    });
+    if (preview.alreadyWired) {
+      logger.info(preview.skippedReason ?? "Runtime provider is already wired.");
+      shouldWire = false;
+    } else {
 
-    if (isCancel(decision)) {
-      throw new GlobalyzeError("Runtime provider setup was cancelled.");
-    }
-
-    if (!decision) {
-      const guidance = await setupRuntimeProvider(config, packageManager, {
-        confirmWiring: false
+      const decision = await confirm({
+        message: `Globalyze can automatically wire the runtime provider.\n\nDetected framework: ${preview.framework}\nEntry file: ${preview.entryFile ? path.relative(config.rootDir, preview.entryFile) : "not detected"}\n\nProceed?`,
+        initialValue: true
       });
-      if (guidance.guidancePath) {
-        logger.info(`Generated runtime guidance at ${guidance.guidancePath}`);
-      }
-      if (guidance.languageSwitcherPath) {
-        logger.info(
-          `Generated language switcher example at ${guidance.languageSwitcherPath}`
-        );
-      }
-      return;
-    }
 
-    shouldWire = true;
+      if (isCancel(decision)) {
+        throw new GlobalyzeError("Runtime provider setup was cancelled.");
+      }
+
+      if (!decision) {
+        const guidance = await setupRuntimeProvider(config, packageManager, {
+          confirmWiring: false
+        });
+        if (guidance.guidancePath) {
+          logger.info(`Generated runtime guidance at ${guidance.guidancePath}`);
+        }
+        if (guidance.languageSwitcherPath) {
+          logger.info(
+            `Generated language switcher example at ${guidance.languageSwitcherPath}`
+          );
+        }
+        return;
+      }
+
+      shouldWire = true;
+    }
   }
 
   const result = await setupRuntimeProvider(config, packageManager, {
     confirmWiring: shouldWire
   });
 
-  if (result.wired && result.entryFile) {
+  if (result.alreadyWired && result.entryFile) {
+    logger.info(result.skippedReason ?? "Runtime provider is already wired.");
+  } else if (result.wired && result.entryFile) {
     logger.success(`Wired runtime provider in ${result.entryFile}`);
   } else if (result.guidancePath) {
     logger.warn(result.skippedReason ?? "Automatic runtime wiring was skipped.");

@@ -15,6 +15,8 @@ import {
   type ResolvedFileLocalizationMetadata
 } from "../utils/nameResolver";
 
+const DATA_FILE_BASENAMES = new Set(["data.json"]);
+
 const TRANSLATABLE_ATTRIBUTES = new Set([
   "title",
   "placeholder",
@@ -46,11 +48,83 @@ const TRANSLATABLE_OBJECT_PROPERTIES = new Set([
   "ariaDescription",
   "tab",
   "heading",
-  "subheading"
+  "subheading",
+  "header",
+  "status",
+  "source",
+  "reviewer",
+  "owner",
+  "account",
+  "stage",
+  "blocker",
+  "nextAction",
+  "priority",
+  "month",
+  "type"
 ]);
+
+const DATA_DRIVEN_PROPERTY_NAMES = new Set([
+  "header",
+  "type",
+  "status",
+  "reviewer",
+  "source",
+  "account",
+  "stage",
+  "blocker",
+  "owner",
+  "nextAction",
+  "priority",
+  "month",
+  "name",
+  "company"
+]);
+
+function isLikelyUiDataFile(filePath: string): boolean {
+  const normalizedFilePath = toPosixPath(filePath).toLowerCase();
+  const baseName = path.posix.basename(normalizedFilePath);
+
+  return (
+    DATA_FILE_BASENAMES.has(baseName) ||
+    normalizedFilePath.includes("/_components/") ||
+    normalizedFilePath.includes("/components/")
+  );
+}
+
+function isEntityLabelProperty(propertyName: string): boolean {
+  return propertyName === "name" || propertyName === "company";
+}
+
+function isLikelyDataDrivenProperty(
+  propertyName: string,
+  filePath: string
+): boolean {
+  if (isEntityLabelProperty(propertyName)) {
+    return filePath.endsWith(".json") || toPosixPath(filePath).includes("/data-table/");
+  }
+
+  return (
+    DATA_DRIVEN_PROPERTY_NAMES.has(propertyName) &&
+    isLikelyUiDataFile(filePath)
+  );
+}
 
 function parseSource(source: string, filePath: string): File {
   try {
+    if (filePath.endsWith(".json")) {
+      return parse(`export default ${source}`, {
+        sourceType: "module",
+        plugins: [
+          "jsx",
+          "typescript",
+          "classProperties",
+          "classPrivateProperties",
+          "topLevelAwait",
+          "importAttributes"
+        ]
+      });
+    }
+
     return parse(source, {
       sourceType: "module",
       plugins: [
@@ -90,6 +164,13 @@ export function isTranslatableAttributeName(attributeName: string): boolean {
 
 export function isTranslatableObjectPropertyName(propertyName: string): boolean {
   return TRANSLATABLE_OBJECT_PROPERTIES.has(propertyName);
+}
+
+export function isDataDrivenTranslatablePropertyName(
+  propertyName: string,
+  filePath: string
+): boolean {
+  return isLikelyDataDrivenProperty(propertyName, filePath);
 }
 
 function resolvePropertyName(
@@ -277,7 +358,11 @@ export function extractStringsFromSource(
 
       const propertyName = resolvePropertyName(path.node.key);
 
-      if (!propertyName || !isTranslatableObjectPropertyName(propertyName)) {
+      if (
+        !propertyName ||
+        (!isTranslatableObjectPropertyName(propertyName) &&
+          !isLikelyDataDrivenProperty(propertyName, filePath))
+      ) {
         return;
       }
 

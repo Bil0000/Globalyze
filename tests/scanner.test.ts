@@ -34,6 +34,10 @@ describe("scanProjectFiles", () => {
       "export const Button = () => <button>Buy now</button>;\n"
     );
     await writeFile(
+      path.join(rootDir, "src", "components", "data.json"),
+      '{ "header": "Status", "status": "Active" }\n'
+    );
+    await writeFile(
       path.join(rootDir, "src", "dist", "ignored.tsx"),
       "export const Ignored = () => <p>Ignored</p>;\n"
     );
@@ -44,7 +48,8 @@ describe("scanProjectFiles", () => {
 
     expect(files.map((filePath) => path.basename(filePath)).sort()).toEqual([
       "Button.jsx",
-      "Hero.tsx"
+      "Hero.tsx",
+      "data.json"
     ]);
   });
 });

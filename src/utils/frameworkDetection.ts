@@ -38,6 +38,10 @@ async function hasAnyPath(rootDir: string, candidates: readonly string[]): Promi
 export async function detectFramework(rootDir: string): Promise<DetectedFramework> {
   const hasNext = await hasDependency(rootDir, "next");
   const hasTanStackStart = await hasDependency(rootDir, "@tanstack/start");
+  const hasRemix =
+    (await hasDependency(rootDir, "@remix-run/react")) ||
+    (await hasDependency(rootDir, "@remix-run/dev"));
+  const hasReactRouter = await hasDependency(rootDir, "react-router-dom");
   const hasVite = await hasDependency(rootDir, "vite");
   const hasReact = await hasDependency(rootDir, "react");
 
@@ -62,8 +66,37 @@ export async function detectFramework(rootDir: string): Promise<DetectedFramewor
     return "tanstack-start";
   }
 
+  if (hasRemix && (await hasAnyPath(rootDir, ["app/root.tsx", "app/root.jsx"]))) {
+    return "remix";
+  }
+
   if (hasVite && hasReact) {
     return "vite-react";
+  }
+
+  if (
+    hasReact &&
+    hasReactRouter &&
+    (await hasAnyPath(rootDir, [
+      "src/main.tsx",
+      "src/main.jsx",
+      "src/index.tsx",
+      "src/index.jsx"
+    ]))
+  ) {
+    return "react-router";
+  }
+
+  if (
+    hasReact &&
+    (await hasAnyPath(rootDir, [
+      "src/main.tsx",
+      "src/main.jsx",
+      "src/index.tsx",
+      "src/index.jsx"
+    ]))
+  ) {
+    return "plain-react";
   }
 
   return "unknown";

@@ -35,6 +35,11 @@ async function maybeWireRuntimeDuringGlobalize(
   if (process.stdin.isTTY && process.stdout.isTTY) {
     const preview = await inspectRuntimeProviderTarget(config);
 
+    if (preview.alreadyWired) {
+      logger.info(preview.skippedReason ?? "Runtime provider is already wired.");
+      return;
+    }
+
     if (preview.canAutoWire) {
       const decision = await confirm({
         message: `Globalyze can automatically wire the runtime provider.\n\nDetected framework: ${preview.framework}\nEntry file: ${preview.entryFile ? path.relative(config.rootDir, preview.entryFile) : "not detected"}\n\nProceed?`,
@@ -55,7 +60,9 @@ async function maybeWireRuntimeDuringGlobalize(
     confirmWiring
   });
 
-  if (result.wired && result.entryFile) {
+  if (result.alreadyWired && result.entryFile) {
+    logger.info(result.skippedReason ?? "Runtime provider is already wired.");
+  } else if (result.wired && result.entryFile) {
     logger.success(`Wired runtime provider in ${result.entryFile}`);
   } else if (result.guidancePath) {
     logger.warn(result.skippedReason ?? "Automatic runtime wiring was skipped.");

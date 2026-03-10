@@ -39,7 +39,7 @@ describe("config commands", () => {
       "utf8"
     );
     const localeHook = await readFile(
-      path.join(rootDir, "src", "i18n", "useLocale.ts"),
+      path.join(rootDir, "src", "i18n", "useLocale.tsx"),
       "utf8"
     );
 

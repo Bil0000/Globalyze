@@ -1,6 +1,6 @@
 import path from "node:path";
 import { afterEach, describe, expect, it, mock } from "bun:test";
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 import { executeGlobalizeCommand } from "../src/commands/globalize";
@@ -65,6 +65,60 @@ describe("sync-related commands", () => {
     expect(result.localeSync.sourceKeyCount).toBeGreaterThan(0);
     expect(english).toContain("Checkout");
     expect(runtimeModule).toContain("export function t");
+  });
+
+  it("scaffolds a runtime module that matches the generated translations manifest contract", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-sync-runtime-"));
+    tempDirectories.push(rootDir);
+    process.chdir(rootDir);
+    await mkdir(path.join(rootDir, "src", "lib", "i18n"), { recursive: true });
+    await writeTextFile(
+      path.join(rootDir, "globalyze.config.ts"),
+      [
+        "export default {",
+        '  sourceDir: "src",',
+        '  localesDir: "locales",',
+        '  languages: ["en"],',
+        '  ignore: ["node_modules", "dist", "build", ".next", ".git"],',
+        '  localeStructure: { format: "json", structure: "single", splitStrategy: "page", commonFile: false, naming: "dot" },',
+        "  cacheTranslations: true,",
+        "  dynamicExtraction: false,",
+        '  i18nAdapter: "generic",',
+        "  translationInstructions: [],",
+        '  sourceLocale: "en",',
+        '  openAiModel: "gpt-4o-mini",',
+        '  geminiModel: "gemini-2.5-flash-lite",',
+        "  aiBatchSize: 20,",
+        '  translationImportPath: "@/i18n",',
+        '  translationFunctionName: "t",',
+        "  governance: { enabled: false, failOnLockedChange: true, failOnApprovalRequiredChange: false }",
+        "};",
+        ""
+      ].join("\n")
+    );
+    await writeFile(
+      path.join(rootDir, "src", "lib", "i18n", "translations.generated.ts"),
+      [
+        "export const translations = {",
+        '  en: { "checkout.button": "Checkout" }',
+        "} as const;",
+        "",
+        "export function getTranslations(locale: string) {",
+        "  return translations[locale as keyof typeof translations] ?? translations.en;",
+        "}",
+        ""
+      ].join("\n")
+    );
+    await writeTextFile(
+      path.join(rootDir, "src", "page.tsx"),
+      'export default function Page() { return <button>Checkout</button>; }\n'
+    );
+
+    await executeSyncCommand();
+
+    const runtimeModule = await readFile(path.join(rootDir, "src", "i18n.ts"), "utf8");
+    expect(runtimeModule).toContain('import { getTranslations } from "./lib/i18n/translations.generated"');
+    expect(runtimeModule).toContain("const activeTranslations = getTranslations(activeLocale)");
   });
 
   it("keeps the run alias working with a deprecation warning", async () => {

@@ -50,4 +50,60 @@ describe("extractStringsFromSource", () => {
       "We never share it"
     ]);
   });
+
+  it("extracts table and chart strings from data-driven config fields", () => {
+    const source = [
+      "const rows = [",
+      '  { status: "Blocked", source: "Referral", reviewer: "Sarah", owner: "Ops", nextAction: "Escalate", priority: "High" },',
+      '  { month: "January", header: "Revenue", stage: "Negotiation", blocker: "Legal" }',
+      "];",
+      ""
+    ].join("\n");
+
+    const extracted = extractStringsFromSource(
+      source,
+      "/tmp/demo/src/app/dashboard/crm/_components/crm.config.ts"
+    );
+
+    expect(extracted.map((entry) => entry.text)).toEqual([
+      "Blocked",
+      "Referral",
+      "Sarah",
+      "Ops",
+      "Escalate",
+      "High",
+      "January",
+      "Revenue",
+      "Negotiation",
+      "Legal"
+    ]);
+  });
+
+  it("extracts translatable values from json data files", () => {
+    const source = JSON.stringify(
+      [
+        {
+          header: "Status",
+          type: "Internal",
+          status: "Approved",
+          reviewer: "Mona"
+        }
+      ],
+      null,
+      2
+    );
+
+    const extracted = extractStringsFromSource(
+      source,
+      "/tmp/demo/src/app/dashboard/default/_components/data.json"
+    );
+
+    expect(extracted.map((entry) => entry.text)).toEqual([
+      "Status",
+      "Internal",
+      "Approved",
+      "Mona"
+    ]);
+    expect(extracted.every((entry) => entry.kind === "object-property")).toBe(true);
+  });
 });

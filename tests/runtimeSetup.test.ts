@@ -49,8 +49,23 @@ describe("runtime setup", () => {
       JSON.stringify({ dependencies: { vite: "6.0.0", react: "19.0.0" } })
     );
 
+    const remixRoot = await mkdtemp(path.join(tmpdir(), "globalyze-remix-"));
+    tempDirectories.push(remixRoot);
+    await mkdir(path.join(remixRoot, "app"), { recursive: true });
+    await writeFile(
+      path.join(remixRoot, "package.json"),
+      JSON.stringify({
+        dependencies: {
+          "@remix-run/react": "2.0.0",
+          react: "19.0.0"
+        }
+      })
+    );
+    await writeFile(path.join(remixRoot, "app", "root.tsx"), "export default function Root() { return null; }\n");
+
     expect(await detectFramework(nextRoot)).toBe("next-app-router");
     expect(await detectFramework(viteRoot)).toBe("vite-react");
+    expect(await detectFramework(remixRoot)).toBe("remix");
   });
 
   it("injects a provider into a Next.js app router layout when safe", async () => {
@@ -91,7 +106,7 @@ describe("runtime setup", () => {
       "utf8"
     );
     const localeHook = await readFile(
-      path.join(rootDir, "src", "i18n", "useLocale.ts"),
+      path.join(rootDir, "src", "i18n", "useLocale.tsx"),
       "utf8"
     );
     const languageLabels = await readFile(
@@ -107,6 +122,105 @@ describe("runtime setup", () => {
     expect(localeHook).toContain('import { useLocale as useNextIntlLocale } from "next-intl";');
     expect(languageLabels).toContain("DEFAULT_LANGUAGE_LABELS");
     expect(result.devSwitcherInjected).toBe(true);
+  });
+
+  it("injects a provider into a Next.js app router layout with an existing provider tree", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-provider-nested-"));
+    tempDirectories.push(rootDir);
+
+    const layoutPath = path.join(rootDir, "src", "app", "layout.tsx");
+    await mkdir(path.dirname(layoutPath), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "package.json"),
+      JSON.stringify({ dependencies: { next: "15.0.0", react: "19.0.0" } })
+    );
+    await writeFile(
+      layoutPath,
+      [
+        'import { TooltipProvider } from "@/components/ui/tooltip";',
+        'import { PreferencesStoreProvider } from "@/stores/preferences/preferences-provider";',
+        'import { ThemeBootScript } from "@/scripts/theme-boot";',
+        "",
+        "export default function RootLayout({ children }: { children: React.ReactNode }) {",
+        "  return (",
+        '    <html lang="en">',
+        "      <head>",
+        "        <ThemeBootScript />",
+        "      </head>",
+        "      <body>",
+        "        <TooltipProvider>",
+        "          <PreferencesStoreProvider>",
+        "            {children}",
+        "          </PreferencesStoreProvider>",
+        "        </TooltipProvider>",
+        "      </body>",
+        "    </html>",
+        "  );",
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    const config = createTestConfig(rootDir, {
+      i18nAdapter: "generic"
+    });
+    const result = await setupRuntimeProvider(
+      config,
+      { name: "pnpm", installCommand: "pnpm add" },
+      { confirmWiring: true }
+    );
+    const updatedLayout = await readFile(layoutPath, "utf8");
+
+    expect(result.wired).toBe(true);
+    expect(updatedLayout).toContain("<GlobalyzeLocaleProvider>");
+    expect(updatedLayout).toContain("<TooltipProvider>");
+    expect(updatedLayout).toContain("<PreferencesStoreProvider>");
+    expect(updatedLayout).toContain("GlobalyzeLanguageSwitcher");
+    expect(updatedLayout).toContain("<ThemeBootScript />");
+  });
+
+  it("skips runtime wiring when the detected entry is already wired", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-provider-wired-"));
+    tempDirectories.push(rootDir);
+
+    const layoutPath = path.join(rootDir, "src", "app", "layout.tsx");
+    await mkdir(path.dirname(layoutPath), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "package.json"),
+      JSON.stringify({ dependencies: { next: "15.0.0", react: "19.0.0" } })
+    );
+    await writeFile(
+      layoutPath,
+      [
+        'import { GlobalyzeLocaleProvider } from "../i18n/useLocale";',
+        "",
+        "export default function RootLayout({ children }: { children: React.ReactNode }) {",
+        "  return (",
+        "    <html>",
+        "      <body>",
+        "        <GlobalyzeLocaleProvider>{children}</GlobalyzeLocaleProvider>",
+        "      </body>",
+        "    </html>",
+        "  );",
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    const originalLayout = await readFile(layoutPath, "utf8");
+    const config = createTestConfig(rootDir, {
+      i18nAdapter: "generic"
+    });
+    const result = await setupRuntimeProvider(
+      config,
+      { name: "pnpm", installCommand: "pnpm add" },
+      { confirmWiring: true }
+    );
+    const updatedLayout = await readFile(layoutPath, "utf8");
+
+    expect(result.alreadyWired).toBe(true);
+    expect(result.wired).toBe(false);
+    expect(updatedLayout).toBe(originalLayout);
   });
 
   it("falls back to runtime guidance when automatic provider wiring is not safe", async () => {
@@ -148,6 +262,80 @@ describe("runtime setup", () => {
     expect(guidance).toContain("Add a language switcher");
   });
 
+  it("injects a provider into a Next.js pages router app entry when safe", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-pages-router-"));
+    tempDirectories.push(rootDir);
+
+    const appPath = path.join(rootDir, "src", "pages", "_app.tsx");
+    await mkdir(path.dirname(appPath), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "package.json"),
+      JSON.stringify({ dependencies: { next: "15.0.0", react: "19.0.0" } })
+    );
+    await writeFile(
+      appPath,
+      [
+        "export default function App({ Component, pageProps }: { Component: React.ComponentType<any>; pageProps: Record<string, unknown> }) {",
+        "  return <Component {...pageProps} />;",
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    const config = createTestConfig(rootDir, {
+      i18nAdapter: "generic"
+    });
+    const result = await setupRuntimeProvider(
+      config,
+      { name: "pnpm", installCommand: "pnpm add" },
+      { confirmWiring: true }
+    );
+    const updatedApp = await readFile(appPath, "utf8");
+
+    expect(result.wired).toBe(true);
+    expect(updatedApp).toContain("GlobalyzeLocaleProvider");
+    expect(updatedApp).toContain("GlobalyzeLanguageSwitcher");
+  });
+
+  it("injects a provider into a Remix root entry when safe", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-remix-wire-"));
+    tempDirectories.push(rootDir);
+
+    const rootPath = path.join(rootDir, "app", "root.tsx");
+    await mkdir(path.dirname(rootPath), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "package.json"),
+      JSON.stringify({
+        dependencies: { "@remix-run/react": "2.0.0", react: "19.0.0" }
+      })
+    );
+    await writeFile(
+      rootPath,
+      [
+        'import { Outlet } from "@remix-run/react";',
+        "",
+        "export default function Root() {",
+        "  return <Outlet />;",
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    const config = createTestConfig(rootDir, {
+      i18nAdapter: "generic"
+    });
+    const result = await setupRuntimeProvider(
+      config,
+      { name: "bun", installCommand: "bun add" },
+      { confirmWiring: true }
+    );
+    const updatedRoot = await readFile(rootPath, "utf8");
+
+    expect(result.wired).toBe(true);
+    expect(updatedRoot).toContain("GlobalyzeLocaleProvider");
+    expect(updatedRoot).toContain("GlobalyzeLanguageSwitcher");
+  });
+
   it("generates a generic locale hook with config-driven languages", async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locale-hook-"));
     tempDirectories.push(rootDir);
@@ -178,7 +366,7 @@ describe("runtime setup", () => {
     );
 
     const localeHook = await readFile(
-      path.join(rootDir, "src", "i18n", "useLocale.ts"),
+      path.join(rootDir, "src", "i18n", "useLocale.tsx"),
       "utf8"
     );
     const switcher = await readFile(
@@ -195,5 +383,60 @@ describe("runtime setup", () => {
     expect(switcher).toContain("resolveLanguageLabel");
     expect(labels).toContain('"fr"');
     expect(labels).toContain('"ar"');
+  });
+
+  it("generates runtime language artifacts as JSX and JS for JavaScript projects", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-locale-hook-js-"));
+    tempDirectories.push(rootDir);
+
+    await mkdir(path.join(rootDir, "src"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "package.json"),
+      JSON.stringify({ dependencies: { react: "19.0.0", vite: "6.0.0" } })
+    );
+    await writeFile(
+      path.join(rootDir, "src", "main.jsx"),
+      [
+        'import { createRoot } from "react-dom/client";',
+        'import App from "./App";',
+        "",
+        'createRoot(document.getElementById("root")).render(<App />);',
+        ""
+      ].join("\n")
+    );
+
+    const config = createTestConfig(rootDir, {
+      i18nAdapter: "generic",
+      languages: ["en", "es"],
+      localeStructure: {
+        ...createTestConfig(rootDir).localeStructure,
+        format: "json"
+      }
+    });
+    await setupRuntimeProvider(
+      config,
+      { name: "bun", installCommand: "bun add" },
+      { confirmWiring: true }
+    );
+
+    const localeHook = await readFile(
+      path.join(rootDir, "src", "i18n", "useLocale.jsx"),
+      "utf8"
+    );
+    const switcher = await readFile(
+      path.join(rootDir, "src", "components", "GlobalyzeLanguageSwitcher.jsx"),
+      "utf8"
+    );
+    const labels = await readFile(
+      path.join(rootDir, "src", "runtime", "languageLabels.js"),
+      "utf8"
+    );
+
+    expect(localeHook).toContain("<GlobalyzeLocaleContext.Provider");
+    expect(localeHook).not.toContain("export interface");
+    expect(switcher).toContain("export function GlobalyzeLanguageSwitcher");
+    expect(switcher).not.toContain("GlobalyzeLanguageSwitcherProps");
+    expect(labels).toContain("export const GLOBALYZE_LANGUAGES =");
+    expect(labels).not.toContain("export type GlobalyzeLanguage");
   });
 });

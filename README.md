@@ -658,7 +658,7 @@ What it can do:
 - safely auto-wire a provider when the entry file is predictable
 - fall back to `globalyze.runtime.md` when wiring would be unsafe
 - scaffold `src/components/GlobalyzeLanguageSwitcher.tsx`
-- scaffold `src/i18n/useLocale.ts`
+- scaffold `src/i18n/useLocale.tsx`
 - scaffold `src/runtime/languageLabels.ts`
 - inject a floating dev-only language switcher when runtime wiring is safe
 
@@ -693,7 +693,7 @@ If wiring is skipped, Globalyze generates [globalyze.runtime.md](/Users/bilal/Do
 When runtime setup runs during `globalyze init` or `globalyze globalize`, Globalyze now scaffolds:
 
 - `src/components/GlobalyzeLanguageSwitcher.tsx`
-- `src/i18n/useLocale.ts`
+- `src/i18n/useLocale.tsx`
 - `src/runtime/languageLabels.ts`
 
 The generated switcher:
@@ -711,7 +711,7 @@ Customize it by:
 - editing `src/runtime/languageLabels.ts` to override labels
 - replacing the default `<select>` UI in `src/components/GlobalyzeLanguageSwitcher.tsx`
 
-For `custom` adapters, Globalyze scaffolds a generic locale provider and leaves TODO comments in `src/i18n/useLocale.ts` where you should connect your own runtime.
+For `custom` adapters, Globalyze scaffolds a generic locale provider and leaves TODO comments in `src/i18n/useLocale.tsx` where you should connect your own runtime.
 
 ## Using Globalyze On Another Repository
 

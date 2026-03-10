@@ -101,6 +101,7 @@ describe("generated translation manifest refresh", () => {
     expect(manifest).toContain('import { homePage as en_home_page } from "../../../locales/en/homePage.js";');
     expect(manifest).toContain('import { common as ar_common } from "../../../locales/ar/common.js";');
     expect(manifest).toContain('export const translations = {');
+    expect(manifest).toContain("export function getTranslations(locale: string)");
     expect(manifest).toContain('"en": locale_en,');
     expect(manifest).toContain('"ar": locale_ar,');
   });

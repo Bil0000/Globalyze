@@ -1,28 +1,45 @@
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, mock } from "bun:test";
 import { generateSemanticKeys } from "../src/ai/keyGenerator";
 import type { ExtractedString } from "../src/types";
 
 describe("generateSemanticKeys", () => {
   const originalFetch = globalThis.fetch;
-  const originalOpenAiKeys = process.env.OPENAI_API_KEYS;
-  const originalOpenAiKey2 = process.env.OPENAI_API_KEY_2;
-  const originalGeminiKeys = process.env.GEMINI_API_KEYS;
+  const originalKeyEnvEntries = Object.entries(process.env).filter(([key]) =>
+    key === "OPENAI_API_KEY" ||
+    key === "OPENAI_API_KEYS" ||
+    key.startsWith("OPENAI_API_KEY_") ||
+    key === "GEMINI_API_KEY" ||
+    key === "GEMINI_API_KEYS" ||
+    key.startsWith("GEMINI_API_KEY_")
+  );
+
+  const resetKeyEnv = () => {
+    for (const key of Object.keys(process.env)) {
+      if (
+        key === "OPENAI_API_KEY" ||
+        key === "OPENAI_API_KEYS" ||
+        key.startsWith("OPENAI_API_KEY_") ||
+        key === "GEMINI_API_KEY" ||
+        key === "GEMINI_API_KEYS" ||
+        key.startsWith("GEMINI_API_KEY_")
+      ) {
+        Reflect.deleteProperty(process.env, key);
+      }
+    }
+  };
+
+  beforeEach(() => {
+    resetKeyEnv();
+  });
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
-    delete process.env.GEMINI_API_KEY;
-    delete process.env.OPENAI_API_KEYS;
-    delete process.env.OPENAI_API_KEY_2;
-    delete process.env.GEMINI_API_KEYS;
+    resetKeyEnv();
 
-    if (originalOpenAiKeys !== undefined) {
-      process.env.OPENAI_API_KEYS = originalOpenAiKeys;
-    }
-    if (originalOpenAiKey2 !== undefined) {
-      process.env.OPENAI_API_KEY_2 = originalOpenAiKey2;
-    }
-    if (originalGeminiKeys !== undefined) {
-      process.env.GEMINI_API_KEYS = originalGeminiKeys;
+    for (const [key, value] of originalKeyEnvEntries) {
+      if (value !== undefined) {
+        process.env[key] = value;
+      }
     }
   });
 
