@@ -86,7 +86,7 @@ describe("localeManager", () => {
 
     expect(ensureLocaleCoverageReady(config)).rejects.toThrow(
       new GlobalyzeError(
-        `Locales directory does not exist: ${config.localesDir}. Run "globalyze transform" or "globalyze sync" first.`
+        `Locales directory does not exist: ${config.localesDir}. Run "globalyze globalize" or "globalyze sync" first.`
       )
     );
   });

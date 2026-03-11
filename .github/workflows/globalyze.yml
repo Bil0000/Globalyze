@@ -67,7 +67,7 @@ jobs:
         run: globalyze scan --fail-on-findings
 
       - name: Check locale coverage
-        run: globalyze translate --check
+        run: globalyze sync --check
 
       - name: Note fork limitation
         if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork }}

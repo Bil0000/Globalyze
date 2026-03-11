@@ -89,6 +89,7 @@ export function registerGlobalizeCommand(program: Command): void {
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .option("--source-dir <path>", "Override the configured source directory")
     .option("--locales-dir <path>", "Override the configured locales directory")
+    .option("--no-translate", "Skip locale translation during migration")
     .addHelpText(
       "after",
       [
@@ -109,6 +110,7 @@ export function registerGlobalizeCommand(program: Command): void {
         config?: string;
         sourceDir?: string;
         localesDir?: string;
+        translate?: boolean;
       }) => {
         await executeGlobalizeCommand(options);
       }
@@ -120,6 +122,7 @@ export async function executeGlobalizeCommand(
     config?: string;
     sourceDir?: string;
     localesDir?: string;
+    translate?: boolean;
   } = {}
 ) {
   const config = await logger.step(
@@ -139,6 +142,7 @@ export async function executeGlobalizeCommand(
 
   const result = await executeSyncCommand({
     ...options,
+    translate: options.translate,
     skipCoverageAudit: true
   });
   const audit = await logger.step(

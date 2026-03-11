@@ -85,7 +85,7 @@ export async function executeScanCommand(
 
   if (options.failOnFindings && result.strings.length > 0) {
     throw new GlobalyzeError(
-      `Hardcoded UI strings detected (${String(result.strings.length)} total). Review the findings above and run "globalyze transform" to fix them.`
+      `Hardcoded UI strings detected (${String(result.strings.length)} total). Review the findings above and run "globalyze globalize" to fix them.`
     );
   }
 

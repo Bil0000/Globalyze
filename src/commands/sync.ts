@@ -5,6 +5,8 @@ import { collectProjectStrings, prepareTransformProject } from "../cli/pipeline"
 import { extractTranslationKeyReferencesFromFiles } from "../extractor/translationKeyExtractor";
 import { updateTranslationGraph } from "../graph/translationGraph";
 import {
+  ensureLocaleCoverageReady,
+  findMissingTranslationKeys,
   readLocaleEntries,
   syncLocaleFiles
 } from "../i18n/localeManager";
@@ -17,6 +19,7 @@ import type {
   LocaleEntryDictionary,
   TranslationResult
 } from "../types";
+import { GlobalyzeError } from "../utils/errors";
 import { loadGlobalyzeConfig } from "../utils/fileUtils";
 import { logger } from "../utils/logger";
 import {
@@ -111,6 +114,13 @@ export function registerSyncCommand(program: Command): void {
     .option("-c, --config <path>", "Path to a Globalyze config file")
     .option("--source-dir <path>", "Override the configured source directory")
     .option("--locales-dir <path>", "Override the configured locales directory")
+    .option("--check", "Fail when locale files have missing translations", false)
+    .option(
+      "--translate-only",
+      "Only translate existing locale files without scanning or transforming",
+      false
+    )
+    .option("--no-translate", "Skip locale translation during sync")
     .addHelpText(
       "after",
       [
@@ -130,6 +140,9 @@ export function registerSyncCommand(program: Command): void {
         config?: string;
         sourceDir?: string;
         localesDir?: string;
+        check?: boolean;
+        translateOnly?: boolean;
+        translate?: boolean;
       }) => {
         await executeSyncCommand(options);
       }
@@ -141,6 +154,9 @@ export async function executeSyncCommand(
     config?: string;
     sourceDir?: string;
     localesDir?: string;
+    check?: boolean;
+    translateOnly?: boolean;
+    translate?: boolean;
     suppressAliasWarning?: boolean;
     skipCoverageAudit?: boolean;
   } = {}
@@ -150,6 +166,57 @@ export async function executeSyncCommand(
     () => loadGlobalyzeConfig(options.config, buildOverrides(options)),
     "Loaded configuration"
   );
+
+  if (options.check) {
+    logger.hint("Press Ctrl+C at any time to stop Globalyze safely.");
+    await logger.step(
+      "Validating locale setup",
+      () => ensureLocaleCoverageReady(config),
+      "Locale setup is ready"
+    );
+    const report = await logger.step(
+      "Checking translation coverage",
+      () => findMissingTranslationKeys(config),
+      "Checked translation coverage"
+    );
+    const missingEntries = Object.entries(report).flatMap(([language, keys]) =>
+      keys.map((key) => `${language}: ${key}`)
+    );
+
+    if (missingEntries.length > 0) {
+      logger.error("Missing translation keys detected");
+      logger.list(missingEntries);
+      throw new GlobalyzeError("Locale coverage check failed.");
+    }
+
+    logger.success("all locale files are fully translated");
+    return report;
+  }
+
+  if (options.translateOnly) {
+    logInterruptHint();
+    logTranslationHint();
+    const result = await logger.step(
+      "Translating locale files",
+      () => translateLocales(config),
+      (translationResult) =>
+        `Translated ${String(translationResult.translatedLocales.length)} languages${
+          translationResult.usedMockTranslations
+            ? " using English fallback values"
+            : ""
+        }`
+    );
+
+    if (result.usedMockTranslations) {
+      logger.warn(
+        result.skippedReason ??
+          "English source values were copied to target locales."
+      );
+    }
+
+    return result;
+  }
+
   const scaffoldedRuntime = await logger.step(
     "Ensuring translation runtime module",
     () => ensureLocalAdapterRuntime(config),
@@ -227,7 +294,14 @@ export async function executeSyncCommand(
     skippedReason: "No source locale keys exist yet."
   };
 
-  if (localeSync.sourceKeyCount > 0) {
+  if (options.translate === false) {
+    translation = {
+      translatedLocales: [],
+      usedMockTranslations: false,
+      skippedReason: "Skipped locale translation."
+    };
+    logger.info("Skipped locale translation.");
+  } else if (localeSync.sourceKeyCount > 0) {
     logTranslationHint();
     translation = await logger.step(
       "Translating locale files",

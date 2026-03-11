@@ -65,6 +65,16 @@ describe("sync-related commands", () => {
       "utf8"
     );
 
+    expect("localeSync" in result).toBe(true);
+    if (
+      !("localeSync" in result) ||
+      typeof result.localeSync !== "object" ||
+      result.localeSync === null ||
+      !("sourceKeyCount" in result.localeSync)
+    ) {
+      throw new Error("Expected sync result to include localeSync.");
+    }
+
     expect(result.localeSync.sourceKeyCount).toBeGreaterThan(0);
     expect(english).toContain("Checkout");
     expect(runtimeModule).toContain('import { getTranslations } from "./lib/i18n/translations.generated"');

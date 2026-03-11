@@ -177,19 +177,7 @@ globalyze scan
 globalyze preview
 ```
 
-### 4. Transform source and create locale files
-
-```bash
-globalyze transform
-```
-
-### 5. Translate locale files
-
-```bash
-globalyze translate
-```
-
-### 6. Run the full pipeline
+### 4. Run the full pipeline
 
 ```bash
 globalyze sync
@@ -276,15 +264,14 @@ Note:
 
 - `watch` updates source files, syncs locale files, translates new keys into target locales, and removes deleted keys from locale outputs
 
-### `globalyze report`
+### `globalyze analyze`
 
-Shows translation coverage by language and lists missing keys.
+Shows localization diagnostics in one command:
 
-Options:
-
-- `-c, --config <path>`
-- `--source-dir <path>`
-- `--locales-dir <path>`
+- translation coverage
+- missing keys
+- project score
+- localization health
 
 ### `globalyze clean`
 
@@ -303,25 +290,25 @@ globalyze audit
 globalyze audit --fail-on-findings
 ```
 
-### `globalyze inspect <key>`
+### `globalyze inspect key <key>`
 
 Shows the value, locale file, source origin, usages, and governance metadata for a translation key.
 
 ```bash
-globalyze inspect checkout.pay_button
+globalyze inspect key checkout.pay_button
 ```
 
-### `globalyze graph`
+### `globalyze inspect graph`
 
 Shows a high-level summary of the translation graph, including total keys, page counts, component counts, and top pages.
 
 Examples:
 
 ```bash
-globalyze graph
-globalyze graph --page checkout
-globalyze graph --component checkoutButton
-globalyze graph --visual
+globalyze inspect graph
+globalyze inspect graph --page checkout
+globalyze inspect graph --component checkoutButton
+globalyze inspect graph --visual
 ```
 
 `--visual` renders a compact tree, for example:
@@ -352,36 +339,32 @@ To record decisions for unresolved files:
 globalyze classify --fix
 ```
 
-### `globalyze where <key>`
+### `globalyze inspect where <key>`
 
 Lists the source files that currently use a translation key.
 
 ```bash
-globalyze where checkout.pay_button
+globalyze inspect where checkout.pay_button
 ```
 
-### `globalyze locales <language> [scope]`
+### `globalyze inspect locales <language> [scope]`
 
 Reads locale entries for a language without modifying files. Works with JSON, JS, single-file, and multi-file layouts.
 
 Examples:
 
 ```bash
-globalyze locales en
-globalyze locales en checkout
+globalyze inspect locales en
+globalyze inspect locales en checkout
 ```
 
-### `globalyze search <text>`
+### `globalyze inspect search <text>`
 
 Finds translation keys by matching source-locale values.
 
 ```bash
-globalyze search "Pay now"
+globalyze inspect search "Pay now"
 ```
-
-### `globalyze doctor`
-
-Shows a read-only localization health report with key counts, unused keys, duplicate strings, coverage, locale structure, and configured languages.
 
 ### Maintenance Commands
 
@@ -485,29 +468,19 @@ Options:
 - `--source-dir <path>`
 - `--locales-dir <path>`
 
-### `globalyze transform`
-
-Extracts strings, generates keys, rewrites source files, and syncs locale files.
-
-Options:
-
-- `-c, --config <path>`
-- `--source-dir <path>`
-- `--locales-dir <path>`
-
 ## Inspecting Translations
 
 Globalyze includes read-only inspection commands for understanding the current localization state without rewriting code or locale files.
 
 ```bash
 globalyze audit
-globalyze inspect checkout.pay_button
-globalyze graph
-globalyze where checkout.pay_button
-globalyze locales en
-globalyze locales en checkout
-globalyze search "Pay now"
-globalyze doctor
+globalyze inspect key checkout.pay_button
+globalyze inspect graph
+globalyze inspect where checkout.pay_button
+globalyze inspect locales en
+globalyze inspect locales en checkout
+globalyze inspect search "Pay now"
+globalyze analyze
 ```
 
 Use them to answer common questions quickly:
@@ -517,27 +490,6 @@ Use them to answer common questions quickly:
 - which locale file contains a value
 - whether a string is duplicated
 - whether the current project has unused keys or missing coverage
-
-### `globalyze translate`
-
-Translates locale files using Lingo.dev.
-
-Options:
-
-- `-c, --config <path>`
-- `--source-dir <path>`
-- `--locales-dir <path>`
-- `--check` validate locale coverage without translating
-
-### `globalyze score`
-
-Generates an i18n quality score from coverage, hardcoded string count, and locale health.
-
-Options:
-
-- `-c, --config <path>`
-- `--source-dir <path>`
-- `--locales-dir <path>`
 
 ### `globalyze screenshot <image>`
 
@@ -766,7 +718,7 @@ Current workflow behavior:
 - commits generated changes with `globalyze bot: add missing translations`
 - pushes fixes back to the PR branch when allowed
 - runs `globalyze scan --fail-on-findings`
-- runs `globalyze translate --check`
+- runs `globalyze sync --check`
 
 Fork limitation:
 
