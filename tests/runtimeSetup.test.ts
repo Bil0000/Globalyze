@@ -80,10 +80,31 @@ describe("runtime setup", () => {
       "export default function Root() { return null; }\n"
     );
 
+    const reactRouterRoot = await mkdtemp(
+      path.join(tmpdir(), "globalyze-react-router-")
+    );
+    tempDirectories.push(reactRouterRoot);
+    await mkdir(path.join(reactRouterRoot, "app"), { recursive: true });
+    await writeFile(
+      path.join(reactRouterRoot, "package.json"),
+      JSON.stringify({
+        dependencies: {
+          "@react-router/dev": "7.0.0",
+          "react-router": "7.0.0",
+          react: "19.0.0"
+        }
+      })
+    );
+    await writeFile(
+      path.join(reactRouterRoot, "app", "root.tsx"),
+      'import { Outlet } from "react-router"; export default function Root() { return <Outlet />; }\n'
+    );
+
     expect(await detectFramework(nextRoot)).toBe("next-app-router");
     expect(await detectFramework(viteRoot)).toBe("vite-react");
     expect(await detectFramework(remixRoot)).toBe("remix");
     expect(await detectFramework(tanStackRoot)).toBe("tanstack-start");
+    expect(await detectFramework(reactRouterRoot)).toBe("react-router");
   });
 
   it("injects a provider into a Next.js app router layout when safe", async () => {
@@ -135,9 +156,18 @@ describe("runtime setup", () => {
     expect(result.wired).toBe(true);
     expect(updatedLayout).toContain('import { NextIntlClientProvider } from "next-intl";');
     expect(updatedLayout).toContain("<NextIntlClientProvider");
+    expect(updatedLayout).toContain("locale={getCurrentLocale()}");
+    expect(updatedLayout).toContain("messages={getCurrentMessages()}");
+    expect(updatedLayout).toContain('import { getCurrentLocale, getCurrentMessages } from "../i18n/runtime";');
     expect(updatedLayout).toContain("GlobalyzeLanguageSwitcher");
     expect(languageSwitcher).toContain("export function GlobalyzeLanguageSwitcher");
     expect(localeHook).toContain('import { useLocale as useNextIntlLocale } from "next-intl";');
+    expect(localeHook).toContain('import { usePathname, useRouter } from "next/navigation";');
+    const serverRuntime = await readFile(
+      path.join(rootDir, "src", "i18n", "runtime.ts"),
+      "utf8"
+    );
+    expect(serverRuntime).toContain("getCurrentMessages");
     expect(languageLabels).toContain("DEFAULT_LANGUAGE_LABELS");
     expect(result.devSwitcherInjected).toBe(true);
   });
@@ -372,6 +402,50 @@ describe("runtime setup", () => {
       rootPath,
       [
         'import { Outlet } from "@tanstack/start";',
+        "",
+        "export default function Root() {",
+        "  return <Outlet />;",
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    const config = createTestConfig(rootDir, {
+      i18nAdapter: "generic"
+    });
+    const result = await setupRuntimeProvider(
+      config,
+      { name: "bun", installCommand: "bun add" },
+      { confirmWiring: true }
+    );
+    const updatedRoot = await readFile(rootPath, "utf8");
+
+    expect(result.wired).toBe(true);
+    expect(updatedRoot).toContain("GlobalyzeLocaleProvider");
+    expect(updatedRoot).toContain("GlobalyzeLanguageSwitcher");
+    expect(updatedRoot).toContain('import { getCurrentLocale } from "@/i18n";');
+  });
+
+  it("injects a provider into a React Router root entry when safe", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-react-router-wire-"));
+    tempDirectories.push(rootDir);
+
+    const rootPath = path.join(rootDir, "app", "root.tsx");
+    await mkdir(path.dirname(rootPath), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "package.json"),
+      JSON.stringify({
+        dependencies: {
+          "@react-router/dev": "7.0.0",
+          "react-router": "7.0.0",
+          react: "19.0.0"
+        }
+      })
+    );
+    await writeFile(
+      rootPath,
+      [
+        'import { Outlet } from "react-router";',
         "",
         "export default function Root() {",
         "  return <Outlet />;",

@@ -75,14 +75,29 @@ function requiresGeneratedLocaleProvider(adapterName: string): boolean {
 }
 
 function buildProviderAttributes(
-  adapterName: string
+  adapterName: string,
+  options: {
+    resolveLocaleAtRuntime: boolean;
+    resolveMessagesAtRuntime: boolean;
+  }
 ): t.JSXAttribute[] | null {
   if (adapterName === "next-intl" || adapterName === "react-intl") {
     return [
-      t.jsxAttribute(t.jsxIdentifier("locale"), t.stringLiteral("en")),
+      t.jsxAttribute(
+        t.jsxIdentifier("locale"),
+        options.resolveLocaleAtRuntime
+          ? t.jsxExpressionContainer(
+              t.callExpression(t.identifier("getCurrentLocale"), [])
+            )
+          : t.stringLiteral("en")
+      ),
       t.jsxAttribute(
         t.jsxIdentifier("messages"),
-        t.jsxExpressionContainer(t.objectExpression([]))
+        t.jsxExpressionContainer(
+          options.resolveMessagesAtRuntime
+            ? t.callExpression(t.identifier("getCurrentMessages"), [])
+            : t.objectExpression([])
+        )
       )
     ];
   }
@@ -91,7 +106,10 @@ function buildProviderAttributes(
 }
 
 function canAutoInjectAdapterProvider(adapterName: string): boolean {
-  return buildProviderAttributes(adapterName) !== null;
+  return buildProviderAttributes(adapterName, {
+    resolveLocaleAtRuntime: false,
+    resolveMessagesAtRuntime: false
+  }) !== null;
 }
 
 function ensureImport(
@@ -144,10 +162,15 @@ function buildWrappedApplication(
     providerComponentName?: string;
     wrapWithLocaleProvider: boolean;
     includeInitialLocale?: boolean;
+    resolveProviderLocaleAtRuntime?: boolean;
+    resolveProviderMessagesAtRuntime?: boolean;
   }
 ): t.JSXElement | t.JSXFragment {
   let wrapped: t.JSXElement | t.JSXFragment | t.JSXExpressionContainer = child;
-  const providerAttributes = buildProviderAttributes(options.adapterName);
+  const providerAttributes = buildProviderAttributes(options.adapterName, {
+    resolveLocaleAtRuntime: options.resolveProviderLocaleAtRuntime ?? false,
+    resolveMessagesAtRuntime: options.resolveProviderMessagesAtRuntime ?? false
+  });
 
   if (options.providerComponentName && providerAttributes) {
     const providerName = t.jsxIdentifier(options.providerComponentName);
@@ -319,21 +342,45 @@ async function detectRuntimeEntry(
       "routes/__root.js",
       "src/app/__root.tsx",
       "src/app/__root.jsx",
+      "src/app/__root.ts",
+      "src/app/__root.js",
       "app/__root.tsx",
-      "app/__root.jsx"
+      "app/__root.jsx",
+      "app/__root.ts",
+      "app/__root.js"
     ],
     remix: ["app/root.tsx", "app/root.jsx", "app/root.ts", "app/root.js"],
     "react-router": [
+      "app/root.tsx",
+      "app/root.jsx",
+      "app/root.ts",
+      "app/root.js",
+      "src/root.tsx",
+      "src/root.jsx",
+      "src/root.ts",
+      "src/root.js",
+      "root.tsx",
+      "root.jsx",
+      "root.ts",
+      "root.js",
+      "src/main.ts",
       "src/main.tsx",
+      "src/main.js",
       "src/main.jsx",
+      "src/index.ts",
       "src/index.tsx",
+      "src/index.js",
       "src/index.jsx"
     ],
-    "vite-react": ["src/main.tsx", "src/main.jsx"],
+    "vite-react": ["src/main.ts", "src/main.tsx", "src/main.js", "src/main.jsx"],
     "plain-react": [
+      "src/main.ts",
       "src/main.tsx",
+      "src/main.js",
       "src/main.jsx",
+      "src/index.ts",
       "src/index.tsx",
+      "src/index.js",
       "src/index.jsx"
     ],
     unknown: []
@@ -483,6 +530,7 @@ async function wireComponentReturnFile(
     localeHookImportPath: string;
     switcherImportPath: string;
     runtimeImportPath?: string;
+    providerRuntimeImportPath?: string;
     requiredComponentNames: string[];
   }
 ): Promise<{ updated: boolean; devSwitcherInjected: boolean }> {
@@ -527,7 +575,9 @@ async function wireComponentReturnFile(
             providerComponentName: options.providerComponentName,
             wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName),
             includeInitialLocale:
-              options.adapterName === "generic" || options.adapterName === "custom"
+              options.adapterName === "generic" || options.adapterName === "custom",
+            resolveProviderLocaleAtRuntime: Boolean(options.providerRuntimeImportPath),
+            resolveProviderMessagesAtRuntime: Boolean(options.providerRuntimeImportPath)
           }
         )
       ];
@@ -556,6 +606,10 @@ async function wireComponentReturnFile(
   if (options.runtimeImportPath) {
     ensureImport(ast, options.runtimeImportPath, "getCurrentLocale");
   }
+  if (options.providerRuntimeImportPath) {
+    ensureImport(ast, options.providerRuntimeImportPath, "getCurrentLocale");
+    ensureImport(ast, options.providerRuntimeImportPath, "getCurrentMessages");
+  }
 
   ensureImport(ast, options.switcherImportPath, "GlobalyzeLanguageSwitcher");
 
@@ -576,6 +630,7 @@ async function wireNextAppRouterLayout(
     localeHookImportPath: string;
     switcherImportPath: string;
     runtimeImportPath?: string;
+    providerRuntimeImportPath?: string;
   }
 ): Promise<{ updated: boolean; devSwitcherInjected: boolean }> {
   const source = await readTextFile(filePath);
@@ -631,7 +686,9 @@ async function wireNextAppRouterLayout(
             providerComponentName: options.providerComponentName,
             wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName),
             includeInitialLocale:
-              options.adapterName === "generic" || options.adapterName === "custom"
+              options.adapterName === "generic" || options.adapterName === "custom",
+            resolveProviderLocaleAtRuntime: Boolean(options.providerRuntimeImportPath),
+            resolveProviderMessagesAtRuntime: Boolean(options.providerRuntimeImportPath)
           }
         )
       ];
@@ -660,6 +717,10 @@ async function wireNextAppRouterLayout(
   if (options.runtimeImportPath) {
     ensureImport(ast, options.runtimeImportPath, "getCurrentLocale");
   }
+  if (options.providerRuntimeImportPath) {
+    ensureImport(ast, options.providerRuntimeImportPath, "getCurrentLocale");
+    ensureImport(ast, options.providerRuntimeImportPath, "getCurrentMessages");
+  }
 
   ensureImport(ast, options.switcherImportPath, "GlobalyzeLanguageSwitcher");
 
@@ -680,6 +741,7 @@ async function wireViteEntry(
     localeHookImportPath: string;
     switcherImportPath: string;
     runtimeImportPath?: string;
+    providerRuntimeImportPath?: string;
   }
 ): Promise<{ updated: boolean; devSwitcherInjected: boolean }> {
   const source = await readTextFile(filePath);
@@ -756,6 +818,10 @@ async function wireViteEntry(
   if (options.runtimeImportPath) {
     ensureImport(ast, options.runtimeImportPath, "getCurrentLocale");
   }
+  if (options.providerRuntimeImportPath) {
+    ensureImport(ast, options.providerRuntimeImportPath, "getCurrentLocale");
+    ensureImport(ast, options.providerRuntimeImportPath, "getCurrentMessages");
+  }
 
   ensureImport(ast, options.switcherImportPath, "GlobalyzeLanguageSwitcher");
 
@@ -786,6 +852,7 @@ function buildGuidanceContents(
       : null;
   const runtimeFiles = [
     "`src/lib/i18n/translations.generated.ts` if it exists",
+    "`src/i18n/runtime.ts` or `src/i18n/runtime.js` if generated",
     "`src/i18n/useLocale.ts` or `src/i18n/useLocale.tsx` if generated",
     "`src/components/GlobalyzeLanguageSwitcher.tsx` if generated",
     "`src/runtime/languageLabels.ts` if generated"
@@ -983,6 +1050,12 @@ export async function setupRuntimeProvider(
       entry.filePath,
       artifacts.localeHookPath
     ),
+    providerRuntimeImportPath:
+      (adapter.name === "next-intl" || adapter.name === "react-intl") &&
+      framework !== "vite-react" &&
+      framework !== "plain-react"
+        ? buildRelativeImportPath(entry.filePath, artifacts.serverRuntimePath)
+        : undefined,
     ...(adapter.name === "generic" || adapter.name === "custom"
       ? {
           runtimeImportPath: config.translationImportPath
@@ -1007,6 +1080,14 @@ export async function setupRuntimeProvider(
               ...providerOptions,
               requiredComponentNames: ["Outlet"]
             })
+          : framework === "react-router" &&
+              /(^|\/)(app|src)?\/?root\.(tsx|jsx|ts|js)$/.test(
+                entry.filePath.replace(/\\/g, "/")
+              )
+            ? await wireComponentReturnFile(entry.filePath, {
+                ...providerOptions,
+                requiredComponentNames: ["Outlet"]
+              })
           : await wireViteEntry(entry.filePath, providerOptions);
 
   if (!wiringResult.updated) {

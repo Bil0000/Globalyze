@@ -41,7 +41,10 @@ export async function detectFramework(rootDir: string): Promise<DetectedFramewor
   const hasRemix =
     (await hasDependency(rootDir, "@remix-run/react")) ||
     (await hasDependency(rootDir, "@remix-run/dev"));
-  const hasReactRouter = await hasDependency(rootDir, "react-router-dom");
+  const hasReactRouter =
+    (await hasDependency(rootDir, "react-router-dom")) ||
+    (await hasDependency(rootDir, "react-router")) ||
+    (await hasDependency(rootDir, "@react-router/dev"));
   const hasVite = await hasDependency(rootDir, "vite");
   const hasReact = await hasDependency(rootDir, "react");
 
@@ -85,29 +88,49 @@ export async function detectFramework(rootDir: string): Promise<DetectedFramewor
     return "remix";
   }
 
+  if (
+    hasReact &&
+    hasReactRouter &&
+    (await hasAnyPath(rootDir, [
+      "app/root.tsx",
+      "app/root.jsx",
+      "app/root.ts",
+      "app/root.js",
+      "src/root.tsx",
+      "src/root.jsx",
+      "src/root.ts",
+      "src/root.js",
+      "root.tsx",
+      "root.jsx",
+      "root.ts",
+      "root.js",
+      "src/main.tsx",
+      "src/main.jsx",
+      "src/main.ts",
+      "src/main.js",
+      "src/index.tsx",
+      "src/index.jsx",
+      "src/index.ts",
+      "src/index.js"
+    ]))
+  ) {
+    return "react-router";
+  }
+
   if (hasVite && hasReact) {
     return "vite-react";
   }
 
   if (
     hasReact &&
-    hasReactRouter &&
     (await hasAnyPath(rootDir, [
+      "src/main.ts",
       "src/main.tsx",
+      "src/main.js",
       "src/main.jsx",
+      "src/index.ts",
       "src/index.tsx",
-      "src/index.jsx"
-    ]))
-  ) {
-    return "react-router";
-  }
-
-  if (
-    hasReact &&
-    (await hasAnyPath(rootDir, [
-      "src/main.tsx",
-      "src/main.jsx",
-      "src/index.tsx",
+      "src/index.js",
       "src/index.jsx"
     ]))
   ) {

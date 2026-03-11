@@ -27,6 +27,7 @@ export interface LanguageArtifactResult {
   labelsPath: string;
   localeHookPath: string;
   switcherPath: string;
+  serverRuntimePath: string;
   created: string[];
   updated: string[];
   skipped: string[];
@@ -38,6 +39,7 @@ interface RuntimeArtifactPaths {
   labelsPath: string;
   localeHookPath: string;
   switcherPath: string;
+  serverRuntimePath: string;
 }
 
 function buildLanguageLabelsContents(
@@ -88,6 +90,175 @@ function buildLanguageLabelsContents(
   ].join("\n");
 }
 
+function buildServerRuntimeContents(
+  config: ResolvedGlobalyzeConfig,
+  flavor: RuntimeArtifactFlavor
+): string {
+  const manifestImportPath = "../lib/i18n/translations.generated";
+  const defaultLocale = JSON.stringify(config.sourceLocale);
+  const isTypeScript = flavor === "typescript";
+
+  if (!isTypeScript) {
+    return [
+      `import { getTranslations } from ${JSON.stringify(manifestImportPath)};`,
+      "",
+      `const DEFAULT_LOCALE = ${defaultLocale};`,
+      'const STORAGE_KEY = "globalyze.locale";',
+      'const COOKIE_KEY = "globalyze.locale";',
+      "",
+      "function readCookieLocale(cookieSource) {",
+      "  if (!cookieSource) {",
+      "    return null;",
+      "  }",
+      "",
+      "  const cookies = cookieSource.split(/;\\s*/).filter(Boolean);",
+      '  const match = cookies.find((entry) => entry.startsWith(`${COOKIE_KEY}=`));',
+      "  return match ? decodeURIComponent(match.slice(COOKIE_KEY.length + 1)) : null;",
+      "}",
+      "",
+      "function readServerCookieLocale() {",
+      '  if (typeof window !== "undefined") {',
+      "    return null;",
+      "  }",
+      "",
+      "  try {",
+      "    const maybeRequire = Function(",
+      "      'return typeof require !== \"undefined\" ? require : null;'",
+      "    )();",
+      "",
+      "    if (!maybeRequire) {",
+      "      return null;",
+      "    }",
+      "",
+      '    const nextHeaders = maybeRequire("next/headers");',
+      "    const cookieStore = typeof nextHeaders.cookies === \"function\" ? nextHeaders.cookies() : null;",
+      '    const cookie = cookieStore?.get(COOKIE_KEY);',
+      '    return typeof cookie?.value === "string" && cookie.value.trim().length > 0 ? cookie.value : null;',
+      "  } catch {",
+      "    return null;",
+      "  }",
+      "}",
+      "",
+      "export function getCurrentLocale(locale) {",
+      "  if (typeof locale === \"string\" && locale.trim().length > 0) {",
+      "    return locale;",
+      "  }",
+      "",
+      "  const serverLocale = readServerCookieLocale();",
+      "  if (serverLocale) {",
+      "    return serverLocale;",
+      "  }",
+      "",
+      '  if (typeof window !== "undefined") {',
+      '    const cookieLocale = readCookieLocale(typeof document !== "undefined" ? document.cookie : null);',
+      "    if (cookieLocale) {",
+      "      return cookieLocale;",
+      "    }",
+      "",
+      "    try {",
+      "      const storedLocale = window.localStorage.getItem(STORAGE_KEY);",
+      "      if (typeof storedLocale === \"string\" && storedLocale.trim().length > 0) {",
+      "        return storedLocale;",
+      "      }",
+      "    } catch {",
+      "      return DEFAULT_LOCALE;",
+      "    }",
+      "  }",
+      "",
+      "  return DEFAULT_LOCALE;",
+      "}",
+      "",
+      "export function getCurrentMessages(locale) {",
+      "  const activeLocale = getCurrentLocale(locale);",
+      "  return getTranslations(activeLocale) ?? getTranslations(DEFAULT_LOCALE) ?? {};",
+      "}",
+      ""
+    ].join("\n");
+  }
+
+  return [
+    `import { getTranslations } from ${JSON.stringify(manifestImportPath)};`,
+    "",
+    `const DEFAULT_LOCALE = ${defaultLocale};`,
+    'const STORAGE_KEY = "globalyze.locale";',
+    'const COOKIE_KEY = "globalyze.locale";',
+    "",
+    "function readCookieLocale(cookieSource: string | null | undefined): string | null {",
+    "  if (!cookieSource) {",
+    "    return null;",
+    "  }",
+    "",
+    "  const cookies = cookieSource.split(/;\\s*/).filter(Boolean);",
+    '  const match = cookies.find((entry) => entry.startsWith(`${COOKIE_KEY}=`));',
+    "  return match ? decodeURIComponent(match.slice(COOKIE_KEY.length + 1)) : null;",
+    "}",
+    "",
+    "function readServerCookieLocale(): string | null {",
+    '  if (typeof window !== "undefined") {',
+    "    return null;",
+    "  }",
+    "",
+    "  try {",
+    "    const maybeRequire = Function(",
+    "      'return typeof require !== \"undefined\" ? require : null;'",
+    "    )() as ((specifier: string) => unknown) | null;",
+    "",
+    "    if (!maybeRequire) {",
+    "      return null;",
+    "    }",
+    "",
+    "    const nextHeaders = maybeRequire(\"next/headers\") as {",
+    "      cookies?: () => { get: (name: string) => { value?: string } | undefined };",
+    "    };",
+    "    const cookieStore = typeof nextHeaders.cookies === \"function\" ? nextHeaders.cookies() : null;",
+    "    const cookie = cookieStore?.get(COOKIE_KEY);",
+    '    return typeof cookie?.value === "string" && cookie.value.trim().length > 0 ? cookie.value : null;',
+    "  } catch {",
+    "    return null;",
+    "  }",
+    "}",
+    "",
+    "export function getCurrentLocale(locale?: string): string {",
+    "  if (typeof locale === \"string\" && locale.trim().length > 0) {",
+    "    return locale;",
+    "  }",
+    "",
+    "  const serverLocale = readServerCookieLocale();",
+    "  if (serverLocale) {",
+    "    return serverLocale;",
+    "  }",
+    "",
+    '  if (typeof window !== "undefined") {',
+    '    const cookieLocale = readCookieLocale(typeof document !== "undefined" ? document.cookie : null);',
+    "    if (cookieLocale) {",
+    "      return cookieLocale;",
+    "    }",
+    "",
+    "    try {",
+    "      const storedLocale = window.localStorage.getItem(STORAGE_KEY);",
+    "      if (typeof storedLocale === \"string\" && storedLocale.trim().length > 0) {",
+    "        return storedLocale;",
+    "      }",
+    "    } catch {",
+    "      return DEFAULT_LOCALE;",
+    "    }",
+    "  }",
+    "",
+    "  return DEFAULT_LOCALE;",
+    "}",
+    "",
+    "export function getCurrentMessages(locale?: string): Record<string, string> {",
+    "  const activeLocale = getCurrentLocale(locale);",
+    "  return (",
+    "    (getTranslations(activeLocale) as Record<string, string> | undefined) ??",
+    "    (getTranslations(DEFAULT_LOCALE) as Record<string, string> | undefined) ??",
+    "    {}",
+    "  );",
+    "}",
+    ""
+  ].join("\n");
+}
+
 function buildLocaleHookContents(
   config: ResolvedGlobalyzeConfig,
   flavor: RuntimeArtifactFlavor
@@ -103,12 +274,20 @@ function buildLocaleHookContents(
         "",
         'import { useTranslation } from "react-i18next";',
         "",
+        'const STORAGE_KEY = "globalyze.locale";',
+        'const COOKIE_KEY = "globalyze.locale";',
+        "",
         "export function useLocale() {",
         "  const { i18n } = useTranslation();",
         "",
         "  return {",
         `    locale: i18n.resolvedLanguage ?? i18n.language ?? ${defaultLocale},`,
         "    setLocale: async (locale) => {",
+        '      if (typeof window !== "undefined") {',
+        "        window.localStorage.setItem(STORAGE_KEY, locale);",
+        '        document.cookie = `${COOKIE_KEY}=${encodeURIComponent(locale)}; path=/; max-age=31536000; SameSite=Lax`;',
+        "      }",
+        "",
         "      await i18n.changeLanguage(locale);",
         "    }",
         "  };",
@@ -122,6 +301,9 @@ function buildLocaleHookContents(
       "",
       'import { useTranslation } from "react-i18next";',
       "",
+      'const STORAGE_KEY = "globalyze.locale";',
+      'const COOKIE_KEY = "globalyze.locale";',
+      "",
       "export interface GlobalyzeLocaleController {",
       "  locale: string;",
       "  setLocale: (locale: string) => Promise<void>;",
@@ -133,6 +315,11 @@ function buildLocaleHookContents(
       "  return {",
       `    locale: i18n.resolvedLanguage ?? i18n.language ?? ${defaultLocale},`,
       "    setLocale: async (locale: string) => {",
+      '      if (typeof window !== "undefined") {',
+      "        window.localStorage.setItem(STORAGE_KEY, locale);",
+      '        document.cookie = `${COOKIE_KEY}=${encodeURIComponent(locale)}; path=/; max-age=31536000; SameSite=Lax`;',
+      "      }",
+      "",
       "      await i18n.changeLanguage(locale);",
       "    }",
       "  };",
@@ -147,6 +334,7 @@ function buildLocaleHookContents(
         '"use client";',
         "",
         'import { useLocale as useNextIntlLocale } from "next-intl";',
+        'import { usePathname, useRouter } from "next/navigation";',
         "",
         "function replaceLocaleInPathname(pathname, nextLocale) {",
         "  const segments = pathname.split(\"/\").filter(Boolean);",
@@ -167,16 +355,21 @@ function buildLocaleHookContents(
         "",
         "export function useLocale() {",
         "  const locale = useNextIntlLocale();",
+        "  const router = useRouter();",
+        "  const pathname = usePathname();",
         "",
         "  return {",
         "    locale,",
         "    setLocale: (nextLocale) => {",
-        "      if (typeof window === \"undefined\") {",
+      "      if (typeof window === \"undefined\") {",
         "        return;",
         "      }",
         "",
-        "      const nextPath = replaceLocaleInPathname(window.location.pathname, nextLocale);",
-        "      window.location.assign(`${nextPath}${window.location.search}${window.location.hash}`);",
+        '      window.localStorage.setItem("globalyze.locale", nextLocale);',
+        '      document.cookie = `globalyze.locale=${encodeURIComponent(nextLocale)}; path=/; max-age=31536000; SameSite=Lax`;',
+        "      const nextPath = replaceLocaleInPathname(pathname ?? window.location.pathname, nextLocale);",
+        "      router.replace(`${nextPath}${window.location.search}${window.location.hash}`);",
+        "      router.refresh();",
         "    }",
         "  };",
         "}",
@@ -188,6 +381,7 @@ function buildLocaleHookContents(
       '"use client";',
       "",
       'import { useLocale as useNextIntlLocale } from "next-intl";',
+      'import { usePathname, useRouter } from "next/navigation";',
       "",
       "export interface GlobalyzeLocaleController {",
       "  locale: string;",
@@ -213,16 +407,21 @@ function buildLocaleHookContents(
       "",
       "export function useLocale(): GlobalyzeLocaleController {",
       "  const locale = useNextIntlLocale();",
+      "  const router = useRouter();",
+      "  const pathname = usePathname();",
       "",
       "  return {",
       "    locale,",
       "    setLocale: (nextLocale: string) => {",
       "      if (typeof window === \"undefined\") {",
-      "        return;",
+        "        return;",
       "      }",
       "",
-      "      const nextPath = replaceLocaleInPathname(window.location.pathname, nextLocale);",
-      "      window.location.assign(`${nextPath}${window.location.search}${window.location.hash}`);",
+      '      window.localStorage.setItem("globalyze.locale", nextLocale);',
+      '      document.cookie = `globalyze.locale=${encodeURIComponent(nextLocale)}; path=/; max-age=31536000; SameSite=Lax`;',
+      "      const nextPath = replaceLocaleInPathname(pathname ?? window.location.pathname, nextLocale);",
+      "      router.replace(`${nextPath}${window.location.search}${window.location.hash}`);",
+      "      router.refresh();",
       "    }",
       "  };",
       "}",
@@ -572,6 +771,14 @@ function isGeneratedLanguageLabels(contents: string): boolean {
   );
 }
 
+function isGeneratedServerRuntime(contents: string): boolean {
+  return (
+    contents.includes("getCurrentLocale") &&
+    contents.includes("getCurrentMessages") &&
+    contents.includes("translations.generated")
+  );
+}
+
 async function migrateLegacyLocaleHook(
   legacyPath: string,
   nextPath: string,
@@ -696,7 +903,8 @@ function resolveRuntimeArtifactPaths(
       config.sourceDir,
       "components",
       `GlobalyzeLanguageSwitcher.${jsxExtension}`
-    )
+    ),
+    serverRuntimePath: path.join(config.sourceDir, "i18n", `runtime.${labelsExtension}`)
   };
 }
 
@@ -704,7 +912,7 @@ export async function ensureLanguageArtifacts(
   config: ResolvedGlobalyzeConfig
 ): Promise<LanguageArtifactResult> {
   const flavor = await detectRuntimeArtifactFlavor(config);
-  const { labelsPath, localeHookPath, switcherPath } = resolveRuntimeArtifactPaths(
+  const { labelsPath, localeHookPath, switcherPath, serverRuntimePath } = resolveRuntimeArtifactPaths(
     config,
     flavor
   );
@@ -722,6 +930,10 @@ export async function ensureLanguageArtifacts(
     path.join(config.sourceDir, "components", "GlobalyzeLanguageSwitcher.tsx"),
     path.join(config.sourceDir, "components", "GlobalyzeLanguageSwitcher.jsx")
   ].filter((filePath) => filePath !== switcherPath);
+  const legacyServerRuntimePaths = [
+    path.join(config.sourceDir, "i18n", "runtime.ts"),
+    path.join(config.sourceDir, "i18n", "runtime.js")
+  ].filter((filePath) => filePath !== serverRuntimePath);
 
   const created: string[] = [];
   const updated: string[] = [];
@@ -770,6 +982,21 @@ export async function ensureLanguageArtifacts(
     }
   }
 
+  if (!created.includes(serverRuntimePath)) {
+    for (const legacyPath of legacyServerRuntimePaths) {
+      const legacyMigrationResult = await migrateLegacyLocaleHook(
+        legacyPath,
+        serverRuntimePath,
+        isGeneratedServerRuntime
+      );
+
+      if (legacyMigrationResult === "created") {
+        created.push(serverRuntimePath);
+        break;
+      }
+    }
+  }
+
   const writes = [
     {
       path: labelsPath,
@@ -785,6 +1012,11 @@ export async function ensureLanguageArtifacts(
       path: switcherPath,
       contents: buildLanguageSwitcherContents(flavor),
       validator: isGeneratedLanguageSwitcher
+    },
+    {
+      path: serverRuntimePath,
+      contents: buildServerRuntimeContents(config, flavor),
+      validator: isGeneratedServerRuntime
     }
   ] as const;
 
@@ -812,6 +1044,7 @@ export async function ensureLanguageArtifacts(
     labelsPath,
     localeHookPath,
     switcherPath,
+    serverRuntimePath,
     created,
     updated,
     skipped

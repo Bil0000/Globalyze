@@ -11,6 +11,10 @@ import type {
   LocaleUnresolvedOwnershipStrategy,
   ResolvedNameMetadata
 } from "../types";
+import {
+  getResourceFriendlyConcurrency,
+  mapWithConcurrency
+} from "./async";
 
 const NON_ROUTE_SEGMENTS = new Set([
   "components",
@@ -224,9 +228,17 @@ function toAbsolutePosix(filePath: string): string {
   return path.resolve(filePath).split(path.sep).join(path.posix.sep);
 }
 
-function parseImports(
+interface ParsedFileLocalizationData {
+  pageName: string | null;
+  componentName: string;
+  imports: string[];
+}
+
+function parseFileLocalizationData(
+  filePath: string,
   source: string
-): string[] {
+): ParsedFileLocalizationData {
+  const pageName = resolvePageName(filePath);
   const ast = parse(source, {
     sourceType: "module",
     plugins: [
@@ -239,6 +251,9 @@ function parseImports(
     ]
   });
   const imports = new Set<string>();
+  let componentName: string | null = pageName
+    ? camelCase(path.basename(filePath).replace(/\.[^.]+$/, ""))
+    : null;
 
   traverse(ast, {
     ImportDeclaration(nodePath) {
@@ -255,10 +270,41 @@ function parseImports(
       if (nodePath.node.source && typeof nodePath.node.source.value === "string") {
         imports.add(nodePath.node.source.value);
       }
+    },
+    ExportDefaultDeclaration(nodePath) {
+      if (componentName || !t.isFunctionDeclaration(nodePath.node.declaration)) {
+        return;
+      }
+
+      if (nodePath.node.declaration.id) {
+        componentName = camelCase(nodePath.node.declaration.id.name);
+      }
+    },
+    VariableDeclarator(nodePath) {
+      if (
+        componentName ||
+        !t.isIdentifier(nodePath.node.id) ||
+        !nodePath.node.init
+      ) {
+        return;
+      }
+
+      if (
+        t.isArrowFunctionExpression(nodePath.node.init) ||
+        t.isFunctionExpression(nodePath.node.init)
+      ) {
+        componentName = camelCase(nodePath.node.id.name);
+      }
     }
   });
 
-  return [...imports];
+  return {
+    pageName,
+    componentName:
+      componentName ??
+      camelCase(path.basename(filePath).replace(/\.[^.]+$/, "")),
+    imports: [...imports]
+  };
 }
 
 function deriveSourceRoots(filePaths: readonly string[]): string[] {
@@ -660,32 +706,44 @@ export async function buildFileLocalizationMetadata(
     knownFiles,
     projectRoots
   );
+  const parsedFiles = await mapWithConcurrency(
+    normalizedFiles,
+    getResourceFriendlyConcurrency("cpu"),
+    async (filePath) => {
+      const source = await Bun.file(filePath).text();
+      const parsed = parseFileLocalizationData(filePath, source);
 
-  for (const filePath of normalizedFiles) {
-    const source = await Bun.file(filePath).text();
-    const pageName = resolvePageName(filePath);
+      return {
+        filePath,
+        pageName: parsed.pageName,
+        componentName: parsed.componentName,
+        imports: parsed.imports
+      };
+    }
+  );
 
+  for (const parsedFile of parsedFiles) {
     metadata.set(
-      filePath,
-      pageName
+      parsedFile.filePath,
+      parsedFile.pageName
         ? {
             sourceType: "page",
-            pageName,
+            pageName: parsedFile.pageName,
             ownershipConfidence: "high"
           }
         : {
             sourceType: "component",
-            componentName: resolveComponentName(filePath, source),
+            componentName: parsedFile.componentName,
             ownershipConfidence: "unresolved"
           }
     );
 
     dependencies.set(
-      filePath,
-      parseImports(source)
+      parsedFile.filePath,
+      parsedFile.imports
         .map((specifier) =>
           resolveLocalImport(
-            filePath,
+            parsedFile.filePath,
             specifier,
             knownFiles,
             sourceRoots,
