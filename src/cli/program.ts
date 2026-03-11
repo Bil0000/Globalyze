@@ -17,7 +17,6 @@ import { registerLocalesCommand } from "../commands/locales";
 import { registerOwnerCommand } from "../commands/owner";
 import { registerPreviewCommand } from "../commands/preview";
 import { registerReportCommand } from "../commands/report";
-import { registerRunCommand } from "../commands/run";
 import { registerScanCommand } from "../commands/scan";
 import { registerScoreCommand } from "../commands/score";
 import { registerScreenshotCommand } from "../commands/screenshot";
@@ -55,7 +54,7 @@ export function buildProgram(version: string): Command {
       "  duplicates     Detect duplicate translation keys",
       "  rename         Rename a translation key across the project",
       "  dynamic-remove Revert dynamic extraction transforms",
-      "  change-style   Change locale file structure style",
+      "  style          Change locale file structure style",
       "",
       "Inspection Commands:",
       "  inspect        Inspect a translation key",
@@ -70,9 +69,6 @@ export function buildProgram(version: string): Command {
       "  owner          Assign translation ownership",
       "  lock           Lock a translation key",
       "  unlock         Unlock a translation key",
-      "",
-      "Legacy:",
-      "  run            Deprecated alias for sync",
       ""
     ].join("\n")
   );
@@ -105,7 +101,6 @@ export function buildProgram(version: string): Command {
   registerTranslateCommand(program);
   registerReportCommand(program);
   registerScoreCommand(program);
-  registerRunCommand(program);
 
   return program;
 }

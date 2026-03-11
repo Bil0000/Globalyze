@@ -459,12 +459,6 @@ Locks a translation key against automatic value changes.
 
 Unlocks a translation key so it can be updated again.
 
-### Legacy
-
-### `globalyze run`
-
-Deprecated alias for `globalyze sync`.
-
 ### `globalyze rename <oldKey> <newKey>`
 
 Renames a translation key across source files, locale files, and the translation graph.

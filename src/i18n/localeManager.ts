@@ -404,8 +404,7 @@ export async function ensureLocaleCoverageReady(
 ): Promise<void> {
   if (!(await pathExists(config.localesDir))) {
     throw new GlobalyzeError(
-      `Locales directory does not exist: ${config.localesDir}. Run "globalyze transform" or "globalyze run" first.`
-        .replace('"globalyze run"', '"globalyze sync"')
+      `Locales directory does not exist: ${config.localesDir}. Run "globalyze transform" or "globalyze sync" first.`
     );
   }
 
@@ -417,8 +416,7 @@ export async function ensureLocaleCoverageReady(
     !(await pathExists(sourceLocalePath))
   ) {
     throw new GlobalyzeError(
-      `Source locale output does not exist for ${config.sourceLocale} in ${config.localesDir}. Run "globalyze transform" or "globalyze run" first.`
-        .replace('"globalyze run"', '"globalyze sync"')
+      `Source locale output does not exist for ${config.sourceLocale} in ${config.localesDir}. Run "globalyze transform" or "globalyze sync" first.`
     );
   }
 
@@ -426,8 +424,7 @@ export async function ensureLocaleCoverageReady(
 
   if (Object.keys(sourceLocale).length === 0) {
     throw new GlobalyzeError(
-      `Source locale output for ${config.sourceLocale} is empty in ${config.localesDir}. Run "globalyze transform" or "globalyze run" first.`
-        .replace('"globalyze run"', '"globalyze sync"')
+      `Source locale output for ${config.sourceLocale} is empty in ${config.localesDir}. Run "globalyze transform" or "globalyze sync" first.`
     );
   }
 }

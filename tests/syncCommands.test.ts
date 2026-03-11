@@ -1,12 +1,11 @@
 import path from "node:path";
-import { afterEach, describe, expect, it, mock } from "bun:test";
+import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 import { executeGlobalizeCommand } from "../src/commands/globalize";
 import { executeLockCommand, executeUnlockCommand } from "../src/commands/lock";
 import { executeOwnerCommand } from "../src/commands/owner";
-import { executeRunCommand } from "../src/commands/run";
 import { executeSyncCommand } from "../src/commands/sync";
 import { readLocaleEntries } from "../src/i18n/localeManager";
 import { loadGlobalyzeConfig, writeTextFile } from "../src/utils/fileUtils";
@@ -368,55 +367,6 @@ describe("sync-related commands", () => {
     expect(manifest).not.toContain("socialPage.js");
     expect(frenchBucketContents).toContain('"social.button.google": "Continue with Google"');
     expect(frenchBucketContents).toContain('"Checkout"');
-  });
-
-  it("keeps the run alias working with a deprecation warning", async () => {
-    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-run-"));
-    tempDirectories.push(rootDir);
-    process.chdir(rootDir);
-    await mkdir(path.join(rootDir, "src"), { recursive: true });
-    await writeTextFile(
-      path.join(rootDir, "globalyze.config.ts"),
-      [
-        "export default {",
-        '  sourceDir: "src",',
-        '  localesDir: "locales",',
-        '  languages: ["en"],',
-        '  ignore: ["node_modules", "dist", "build", ".next", ".git"],',
-        '  localeStructure: { format: "json", structure: "single", splitStrategy: "page", commonFile: false, naming: "dot" },',
-        "  cacheTranslations: true,",
-        "  dynamicExtraction: false,",
-        '  i18nAdapter: "generic",',
-        "  translationInstructions: [],",
-        '  sourceLocale: "en",',
-        '  openAiModel: "gpt-4o-mini",',
-        '  geminiModel: "gemini-2.5-flash-lite",',
-        "  aiBatchSize: 20,",
-        '  translationImportPath: "@/i18n",',
-        '  translationFunctionName: "t",',
-        "  governance: { enabled: false, failOnLockedChange: true, failOnApprovalRequiredChange: false }",
-        "};",
-        ""
-      ].join("\n")
-    );
-    await writeTextFile(
-      path.join(rootDir, "src", "page.tsx"),
-      'export default function Page() { return <button>Checkout</button>; }\n'
-    );
-
-    const warnings: string[] = [];
-    const originalWarn = console.warn;
-    console.warn = mock((message?: unknown) => {
-      warnings.push(typeof message === "string" ? message : JSON.stringify(message));
-    }) as typeof console.warn;
-
-    try {
-      await executeRunCommand();
-    } finally {
-      console.warn = originalWarn;
-    }
-
-    expect(warnings.some((message) => message.includes("deprecated"))).toBe(true);
   });
 
   it("creates runtime guidance during globalize for hook-based adapters", async () => {
