@@ -35,6 +35,17 @@ async function hasAnyPath(rootDir: string, candidates: readonly string[]): Promi
   return false;
 }
 
+function hasRouteLikeRootStructure(rootDir: string): Promise<boolean> {
+  return hasAnyPath(rootDir, [
+    path.join("src", "routes"),
+    "routes",
+    path.join("src", "router"),
+    "router",
+    path.join("src", "app", "routes"),
+    path.join("app", "routes")
+  ]);
+}
+
 export async function detectFramework(rootDir: string): Promise<DetectedFramework> {
   const hasNext = await hasDependency(rootDir, "next");
   const hasTanStackStart = await hasDependency(rootDir, "@tanstack/start");
@@ -89,6 +100,18 @@ export async function detectFramework(rootDir: string): Promise<DetectedFramewor
   }
 
   if (
+    hasRemix &&
+    (await hasAnyPath(rootDir, [
+      "src/app/root.tsx",
+      "src/app/root.jsx",
+      "src/app/root.ts",
+      "src/app/root.js"
+    ]))
+  ) {
+    return "remix";
+  }
+
+  if (
     hasReact &&
     hasReactRouter &&
     (await hasAnyPath(rootDir, [
@@ -104,6 +127,18 @@ export async function detectFramework(rootDir: string): Promise<DetectedFramewor
       "root.jsx",
       "root.ts",
       "root.js",
+      "src/app/root.tsx",
+      "src/app/root.jsx",
+      "src/app/root.ts",
+      "src/app/root.js",
+      "src/routes/root.tsx",
+      "src/routes/root.jsx",
+      "src/routes/root.ts",
+      "src/routes/root.js",
+      "routes/root.tsx",
+      "routes/root.jsx",
+      "routes/root.ts",
+      "routes/root.js",
       "src/main.tsx",
       "src/main.jsx",
       "src/main.ts",
@@ -114,6 +149,10 @@ export async function detectFramework(rootDir: string): Promise<DetectedFramewor
       "src/index.js"
     ]))
   ) {
+    return "react-router";
+  }
+
+  if (hasReact && hasReactRouter && (await hasRouteLikeRootStructure(rootDir))) {
     return "react-router";
   }
 

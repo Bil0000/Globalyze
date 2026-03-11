@@ -105,6 +105,44 @@ describe("runtime setup", () => {
     expect(await detectFramework(remixRoot)).toBe("remix");
     expect(await detectFramework(tanStackRoot)).toBe("tanstack-start");
     expect(await detectFramework(reactRouterRoot)).toBe("react-router");
+
+    const remixSrcRoot = await mkdtemp(
+      path.join(tmpdir(), "globalyze-remix-src-root-")
+    );
+    tempDirectories.push(remixSrcRoot);
+    await mkdir(path.join(remixSrcRoot, "src", "app"), { recursive: true });
+    await writeFile(
+      path.join(remixSrcRoot, "package.json"),
+      JSON.stringify({
+        dependencies: {
+          "@remix-run/react": "2.0.0",
+          react: "19.0.0"
+        }
+      })
+    );
+    await writeFile(
+      path.join(remixSrcRoot, "src", "app", "root.tsx"),
+      "export default function Root() { return null; }\n"
+    );
+    expect(await detectFramework(remixSrcRoot)).toBe("remix");
+
+    const reactRouterRoutesRoot = await mkdtemp(
+      path.join(tmpdir(), "globalyze-react-router-routes-")
+    );
+    tempDirectories.push(reactRouterRoutesRoot);
+    await mkdir(path.join(reactRouterRoutesRoot, "src", "routes"), {
+      recursive: true
+    });
+    await writeFile(
+      path.join(reactRouterRoutesRoot, "package.json"),
+      JSON.stringify({
+        dependencies: {
+          "react-router-dom": "7.0.0",
+          react: "19.0.0"
+        }
+      })
+    );
+    expect(await detectFramework(reactRouterRoutesRoot)).toBe("react-router");
   });
 
   it("injects a provider into a Next.js app router layout when safe", async () => {
@@ -162,12 +200,15 @@ describe("runtime setup", () => {
     expect(updatedLayout).toContain("GlobalyzeLanguageSwitcher");
     expect(languageSwitcher).toContain("export function GlobalyzeLanguageSwitcher");
     expect(localeHook).toContain('import { useLocale as useNextIntlLocale } from "next-intl";');
-    expect(localeHook).toContain('import { usePathname, useRouter } from "next/navigation";');
+    expect(localeHook).toContain('import { usePathname, useRouter, useSearchParams } from "next/navigation";');
+    expect(localeHook).toContain("const searchParams = useSearchParams();");
     const serverRuntime = await readFile(
       path.join(rootDir, "src", "i18n", "runtime.ts"),
       "utf8"
     );
     expect(serverRuntime).toContain("getCurrentMessages");
+    expect(serverRuntime).toContain("x-next-intl-locale");
+    expect(serverRuntime).toContain("accept-language");
     expect(languageLabels).toContain("DEFAULT_LANGUAGE_LABELS");
     expect(result.devSwitcherInjected).toBe(true);
   });

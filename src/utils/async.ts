@@ -9,20 +9,44 @@ function clamp(value: number, min: number, max: number): number {
 export function getResourceFriendlyConcurrency(
   profile: ConcurrencyProfile
 ): number {
+  const configured = Number.parseInt(
+    process.env.GLOBALYZE_MAX_CONCURRENCY ?? "",
+    10
+  );
+
+  if (Number.isFinite(configured) && configured > 0) {
+    return clamp(configured, 1, 8);
+  }
+
   const available =
     typeof os.availableParallelism === "function"
       ? os.availableParallelism()
       : os.cpus().length;
+  const memoryInGiB = Math.floor(os.totalmem() / (1024 * 1024 * 1024));
+  const lowMemory = memoryInGiB > 0 && memoryInGiB <= 8;
+  const veryLowMemory = memoryInGiB > 0 && memoryInGiB <= 4;
 
   if (profile === "network") {
-    return clamp(Math.floor(available / 4), 1, 3);
+    return clamp(
+      Math.floor(available / (veryLowMemory ? 6 : lowMemory ? 5 : 4)),
+      1,
+      lowMemory ? 2 : 3
+    );
   }
 
   if (profile === "cpu") {
-    return clamp(Math.floor(available / 2), 1, 4);
+    return clamp(
+      Math.floor(available / (veryLowMemory ? 4 : lowMemory ? 3 : 2)),
+      1,
+      lowMemory ? 3 : 4
+    );
   }
 
-  return clamp(Math.floor((available * 3) / 4), 2, 6);
+  return clamp(
+    Math.floor((available * (lowMemory ? 2 : 3)) / 4),
+    2,
+    lowMemory ? 4 : 6
+  );
 }
 
 export async function mapWithConcurrency<T, R>(

@@ -69,7 +69,6 @@ describe("sync-related commands", () => {
     if (
       !("localeSync" in result) ||
       typeof result.localeSync !== "object" ||
-      result.localeSync === null ||
       !("sourceKeyCount" in result.localeSync)
     ) {
       throw new Error("Expected sync result to include localeSync.");

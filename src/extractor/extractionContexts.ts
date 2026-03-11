@@ -21,7 +21,13 @@ const DATA_DRIVEN_PROPERTY_NAMES = new Set([
   "priority",
   "month",
   "name",
-  "company"
+  "company",
+  "legendLabel",
+  "displayLabel",
+  "emptyLabel",
+  "actionLabel",
+  "shortLabel",
+  "valueLabel"
 ]);
 
 const UI_CONTAINER_PROPERTY_NAMES = new Set([
@@ -39,7 +45,9 @@ const UI_CONTAINER_PROPERTY_NAMES = new Set([
   "filters",
   "footerActions",
   "groups",
+  "highlights",
   "items",
+  "kpis",
   "legend",
   "links",
   "menu",
@@ -47,15 +55,22 @@ const UI_CONTAINER_PROPERTY_NAMES = new Set([
   "metrics",
   "navigation",
   "options",
+  "optionsList",
+  "presets",
+  "quickActions",
   "recentLeadsData",
   "rows",
+  "rowActions",
+  "schema",
   "sections",
+  "sectionsData",
   "series",
   "sidebarItems",
   "stats",
   "tabs",
   "toolbar",
-  "tooltip"
+  "tooltip",
+  "values"
 ]);
 
 const COLLECTION_CONTEXT_PATTERNS = [
@@ -72,10 +87,15 @@ const COLLECTION_CONTEXT_PATTERNS = [
   /filters$/i,
   /legend$/i,
   /links$/i,
+  /actions$/i,
   /statuses$/i,
   /sources$/i,
   /owners$/i,
   /reviewers$/i,
+  /options$/i,
+  /presets$/i,
+  /highlights$/i,
+  /schema$/i,
   /_rows$/i,
   /_data$/i,
   /_items$/i,
@@ -156,6 +176,8 @@ export function isLikelyUiDataFile(filePath: string): boolean {
     normalizedFilePath.includes("/navigation/") ||
     normalizedFilePath.includes("/data-table/") ||
     normalizedFilePath.includes("/tables/") ||
+    normalizedFilePath.includes("/charts/") ||
+    normalizedFilePath.includes("/dashboard/") ||
     /\.config\.[jt]sx?$/.test(normalizedFilePath)
   );
 }

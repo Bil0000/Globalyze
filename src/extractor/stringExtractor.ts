@@ -64,14 +64,27 @@ const TRANSLATABLE_OBJECT_PROPERTIES = new Set([
   "ariaDescription",
   "tab",
   "heading",
-  "subheading"
+  "subheading",
+  "helper",
+  "supportingText",
+  "summary",
+  "eyebrow",
+  "overline",
+  "ctaLabel",
+  "actionLabel",
+  "emptyLabel",
+  "shortLabel",
+  "displayLabel",
+  "valueLabel"
 ]);
 
 const CONTEXTUAL_TRANSLATABLE_OBJECT_PROPERTIES = new Set([
   "subtitle",
   "text",
   "message",
-  "copy"
+  "copy",
+  "content",
+  "headline"
 ]);
 
 interface CachedExtractedStringEntry {
@@ -182,7 +195,7 @@ function mayContainExtractableStrings(
   if (
     /<[\w.-]+/.test(source) ||
     /<\/[\w.-]+>/.test(source) ||
-    /\b(title|label|description|helperText|hint|placeholder|caption|tooltip|header|status|source|reviewer|owner|account|stage|blocker|nextAction|priority|month|type|subtitle|text|message|copy|loading|success|error)\b\s*[:=]/.test(
+    /\b(title|label|description|helperText|hint|placeholder|caption|tooltip|header|status|source|reviewer|owner|account|stage|blocker|nextAction|priority|month|type|subtitle|text|message|copy|content|headline|helper|supportingText|summary|eyebrow|overline|ctaLabel|actionLabel|emptyLabel|shortLabel|displayLabel|valueLabel|loading|success|error)\b\s*[:=]/.test(
       source
     ) ||
     /\b(aria-label|aria-placeholder|alt|emptyMessage|errorMessage)\b\s*=/.test(source) ||

@@ -85,6 +85,31 @@ describe("extractStringsFromSource", () => {
     ]);
   });
 
+  it("extracts deeper config labels from modern dashboard collections", () => {
+    const source = [
+      "const quickActions = [",
+      '  { actionLabel: "Create quote", emptyLabel: "No owner", valueLabel: "High value" }',
+      "];",
+      "const highlights = [",
+      '  { displayLabel: "Pipeline quality", shortLabel: "Strong" }',
+      "];",
+      ""
+    ].join("\n");
+
+    const extracted = extractStringsFromSource(
+      source,
+      "/tmp/demo/src/app/dashboard/analytics/_components/highlights.config.ts"
+    );
+
+    expect(extracted.map((entry) => entry.text)).toEqual([
+      "Create quote",
+      "No owner",
+      "High value",
+      "Pipeline quality",
+      "Strong"
+    ]);
+  });
+
   it("extracts toast call strings and toast state labels", () => {
     const source = [
       "import { toast } from \"sonner\";",

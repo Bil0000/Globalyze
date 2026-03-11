@@ -336,10 +336,18 @@ async function detectRuntimeEntry(
       "src/routes/__root.jsx",
       "src/routes/__root.ts",
       "src/routes/__root.js",
+      "src/routes/root.tsx",
+      "src/routes/root.jsx",
+      "src/routes/root.ts",
+      "src/routes/root.js",
       "routes/__root.tsx",
       "routes/__root.jsx",
       "routes/__root.ts",
       "routes/__root.js",
+      "routes/root.tsx",
+      "routes/root.jsx",
+      "routes/root.ts",
+      "routes/root.js",
       "src/app/__root.tsx",
       "src/app/__root.jsx",
       "src/app/__root.ts",
@@ -349,12 +357,33 @@ async function detectRuntimeEntry(
       "app/__root.ts",
       "app/__root.js"
     ],
-    remix: ["app/root.tsx", "app/root.jsx", "app/root.ts", "app/root.js"],
+    remix: [
+      "app/root.tsx",
+      "app/root.jsx",
+      "app/root.ts",
+      "app/root.js",
+      "src/app/root.tsx",
+      "src/app/root.jsx",
+      "src/app/root.ts",
+      "src/app/root.js"
+    ],
     "react-router": [
       "app/root.tsx",
       "app/root.jsx",
       "app/root.ts",
       "app/root.js",
+      "src/app/root.tsx",
+      "src/app/root.jsx",
+      "src/app/root.ts",
+      "src/app/root.js",
+      "src/routes/root.tsx",
+      "src/routes/root.jsx",
+      "src/routes/root.ts",
+      "src/routes/root.js",
+      "routes/root.tsx",
+      "routes/root.jsx",
+      "routes/root.ts",
+      "routes/root.js",
       "src/root.tsx",
       "src/root.jsx",
       "src/root.ts",
@@ -370,9 +399,22 @@ async function detectRuntimeEntry(
       "src/index.ts",
       "src/index.tsx",
       "src/index.js",
-      "src/index.jsx"
+      "src/index.jsx",
+      "src/App.tsx",
+      "src/App.jsx",
+      "src/App.ts",
+      "src/App.js"
     ],
-    "vite-react": ["src/main.ts", "src/main.tsx", "src/main.js", "src/main.jsx"],
+    "vite-react": [
+      "src/main.ts",
+      "src/main.tsx",
+      "src/main.js",
+      "src/main.jsx",
+      "src/App.tsx",
+      "src/App.jsx",
+      "src/App.ts",
+      "src/App.js"
+    ],
     "plain-react": [
       "src/main.ts",
       "src/main.tsx",
@@ -381,7 +423,11 @@ async function detectRuntimeEntry(
       "src/index.ts",
       "src/index.tsx",
       "src/index.js",
-      "src/index.jsx"
+      "src/index.jsx",
+      "src/App.tsx",
+      "src/App.jsx",
+      "src/App.ts",
+      "src/App.js"
     ],
     unknown: []
   };
@@ -532,6 +578,7 @@ async function wireComponentReturnFile(
     runtimeImportPath?: string;
     providerRuntimeImportPath?: string;
     requiredComponentNames: string[];
+    allowSingleReturn?: boolean;
   }
 ): Promise<{ updated: boolean; devSwitcherInjected: boolean }> {
   const source = await readTextFile(filePath);
@@ -553,7 +600,7 @@ async function wireComponentReturnFile(
         containsJsxComponentName(argument, name)
       );
 
-      if (!hasRequiredMarker) {
+      if (!hasRequiredMarker && !options.allowSingleReturn) {
         return;
       }
 
@@ -1078,7 +1125,8 @@ export async function setupRuntimeProvider(
         : framework === "tanstack-start" || framework === "remix"
           ? await wireComponentReturnFile(entry.filePath, {
               ...providerOptions,
-              requiredComponentNames: ["Outlet"]
+              requiredComponentNames: ["Outlet", "RouterProvider"],
+              allowSingleReturn: true
             })
           : framework === "react-router" &&
               /(^|\/)(app|src)?\/?root\.(tsx|jsx|ts|js)$/.test(
@@ -1086,7 +1134,8 @@ export async function setupRuntimeProvider(
               )
             ? await wireComponentReturnFile(entry.filePath, {
                 ...providerOptions,
-                requiredComponentNames: ["Outlet"]
+                requiredComponentNames: ["Outlet", "RouterProvider"],
+                allowSingleReturn: true
               })
           : await wireViteEntry(entry.filePath, providerOptions);
 
