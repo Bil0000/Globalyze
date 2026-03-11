@@ -1,5 +1,5 @@
 version: 1
 interface:
   display_name: Globalyze
-  short_description: Drive the Globalyze CLI to internationalize and maintain React app translations.
-  default_prompt: Use the Globalyze CLI to initialize, globalize, sync, style, classify, and inspect localization state for this project.
+  short_description: Drive the Globalyze CLI to globalize, sync, audit, analyze, and inspect React app localization safely.
+  default_prompt: Use the Globalyze CLI to initialize, globalize, sync, analyze, audit, classify, style, and inspect localization state and runtime setup for this project.
