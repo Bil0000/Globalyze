@@ -42,9 +42,21 @@ export async function promptLocaleStructure(): Promise<LocaleStructureConfig> {
     message: "Select locale file format",
     initialValue: "ts",
     options: [
-      { label: "TypeScript (.ts) (recommended)", value: "ts", hint: "typed const exports" },
-      { label: "JavaScript (.js)", value: "js", hint: "plain runtime files" },
-      { label: "JSON", value: "json" }
+      {
+        label: "TypeScript (.ts) (recommended)",
+        value: "ts",
+        hint: "typed locale modules with const-safe exports"
+      },
+      {
+        label: "JavaScript (.js)",
+        value: "js",
+        hint: "plain runtime modules without TypeScript syntax"
+      },
+      {
+        label: "JSON",
+        value: "json",
+        hint: "simple data files for JSON-first runtimes"
+      }
     ]
   });
 
@@ -56,8 +68,16 @@ export async function promptLocaleStructure(): Promise<LocaleStructureConfig> {
   const structure = await select({
     message: "Select locale structure",
     options: [
-      { label: "Single file", value: "single" },
-      { label: "Multiple files", value: "multiple" }
+      {
+        label: "Single file",
+        value: "single",
+        hint: "one locale file per language"
+      },
+      {
+        label: "Multiple files",
+        value: "multiple",
+        hint: "split locale files by page or component"
+      }
     ]
   });
 
@@ -79,8 +99,16 @@ export async function promptLocaleStructure(): Promise<LocaleStructureConfig> {
   const splitStrategy = await select({
     message: "Split translations by",
     options: [
-      { label: "Page", value: "page" },
-      { label: "Component", value: "component" }
+      {
+        label: "Page",
+        value: "page",
+        hint: "group strings by route or page ownership"
+      },
+      {
+        label: "Component",
+        value: "component",
+        hint: "group strings by component ownership"
+      }
     ]
   });
 
@@ -107,10 +135,26 @@ export async function promptLocaleStructure(): Promise<LocaleStructureConfig> {
   const naming = await select({
     message: "Select locale file naming",
     options: [
-      { label: `Dotted (${namingExample.dot})`, value: "dot" },
-      { label: `camelCase (${namingExample.camel})`, value: "camel" },
-      { label: `snake_case (${namingExample.snake})`, value: "snake" },
-      { label: `kebab-case (${namingExample.kebab})`, value: "kebab" }
+      {
+        label: `Dotted (${namingExample.dot})`,
+        value: "dot",
+        hint: "keeps page or component suffix visibly separated"
+      },
+      {
+        label: `camelCase (${namingExample.camel})`,
+        value: "camel",
+        hint: "fits many TypeScript and JS codebases"
+      },
+      {
+        label: `snake_case (${namingExample.snake})`,
+        value: "snake",
+        hint: "works well for filesystem-first naming"
+      },
+      {
+        label: `kebab-case (${namingExample.kebab})`,
+        value: "kebab",
+        hint: "common in web-oriented route naming"
+      }
     ]
   });
 
@@ -119,7 +163,8 @@ export async function promptLocaleStructure(): Promise<LocaleStructureConfig> {
   }
 
   const commonFile = await confirm({
-    message: "Enable shared common translation file? (recommended)",
+    message:
+      "Enable shared common translation file? (recommended)\nCollects repeated keys into one shared locale file instead of duplicating them.",
     initialValue: true
   });
 
@@ -267,9 +312,21 @@ async function maybeInstallAdapterDependency(
       message: `Install adapter dependency?\n\n${buildPackageInstallInvocation(detectedPackageManager, packages).displayCommand}`,
       initialValue: "yes",
       options: [
-        { label: "Yes", value: "yes" },
-        { label: "No", value: "no" },
-        { label: "Change package manager", value: "change" }
+        {
+          label: "Yes",
+          value: "yes",
+          hint: "install it now so runtime setup can work immediately"
+        },
+        {
+          label: "No",
+          value: "no",
+          hint: "skip install and run the command manually later"
+        },
+        {
+          label: "Change package manager",
+          value: "change",
+          hint: "pick a different install command for this project"
+        }
       ]
     });
 
@@ -282,10 +339,10 @@ async function maybeInstallAdapterDependency(
         message: "Choose package manager",
         initialValue: detectedPackageManager.name,
         options: [
-          { label: "pnpm", value: "pnpm" },
-          { label: "npm", value: "npm" },
-          { label: "yarn", value: "yarn" },
-          { label: "bun", value: "bun" }
+          { label: "pnpm", value: "pnpm", hint: "uses pnpm add" },
+          { label: "npm", value: "npm", hint: "uses npm install" },
+          { label: "yarn", value: "yarn", hint: "uses yarn add" },
+          { label: "bun", value: "bun", hint: "uses bun add" }
         ]
       });
 
@@ -414,12 +471,13 @@ async function maybeSetupRuntimeProvider(
 
 async function promptDynamicExtraction(): Promise<boolean> {
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
-    return false;
+    return true;
   }
 
   const enabled = await confirm({
-    message: "Enable dynamic extraction? (mixed JSX)",
-    initialValue: false
+    message:
+      "Enable dynamic extraction? (recommended)\nHandles mixed and interpolated UI text like templates, toast states, and other non-static strings.",
+    initialValue: true
   });
 
   if (isCancel(enabled)) {
@@ -438,11 +496,31 @@ async function promptI18nAdapter(): Promise<BuiltInI18nAdapter> {
     message: "Select i18n adapter",
     initialValue: "generic",
     options: [
-      { label: "Generic (recommended)", value: "generic", hint: "safe default runtime" },
-      { label: "react-i18next", value: "react-i18next", hint: "hook-based React runtime" },
-      { label: "next-intl", value: "next-intl", hint: "Next.js runtime adapter" },
-      { label: "react-intl", value: "react-intl", hint: "formatjs runtime adapter" },
-      { label: "Custom", value: "custom", hint: "manual runtime wiring" }
+      {
+        label: "Generic (recommended)",
+        value: "generic",
+        hint: "Globalyze-managed runtime with minimal assumptions"
+      },
+      {
+        label: "react-i18next",
+        value: "react-i18next",
+        hint: "hook-based React runtime using i18next"
+      },
+      {
+        label: "next-intl",
+        value: "next-intl",
+        hint: "Next.js-focused runtime with locale-aware routing"
+      },
+      {
+        label: "react-intl",
+        value: "react-intl",
+        hint: "FormatJS-style provider and message runtime"
+      },
+      {
+        label: "Custom",
+        value: "custom",
+        hint: "keep your own runtime and wire it manually"
+      }
     ]
   });
 
@@ -463,7 +541,8 @@ async function promptGovernance(): Promise<TranslationGovernanceConfig> {
   }
 
   const enabled = await confirm({
-    message: "Enable governance? (enterprise, big-team reviews)",
+    message:
+      "Enable governance? (enterprise, big-team reviews)\nTracks ownership, locking, and approval rules for translation keys.",
     initialValue: false
   });
 
