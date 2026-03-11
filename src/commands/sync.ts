@@ -256,6 +256,15 @@ export async function executeSyncCommand(
     logger.warn("Skipping translation because no source locale keys exist yet.");
   }
 
+  const finalizedManifests = await logger.step(
+    "Finalizing generated translation manifests",
+    () => refreshGeneratedTranslationManifests(config),
+    (paths) =>
+      paths.length > 0
+        ? `Finalized ${String(paths.length)} generated translation manifest${paths.length === 1 ? "" : "s"}`
+        : "No generated translation manifests were found"
+  );
+
   if (translation.usedMockTranslations) {
     logger.warn(
       translation.skippedReason ??
@@ -267,6 +276,12 @@ export async function executeSyncCommand(
   }
   if (refreshedManifests.length > 0) {
     logger.info(`Refreshed: ${refreshedManifests.join(", ")}`);
+  }
+  if (
+    finalizedManifests.length > 0 &&
+    finalizedManifests.join(", ") !== refreshedManifests.join(", ")
+  ) {
+    logger.info(`Finalized: ${finalizedManifests.join(", ")}`);
   }
   const touchedArtifacts = [
     ...refreshedLanguageArtifacts.created,

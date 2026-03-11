@@ -137,18 +137,35 @@ export async function prepareTransformProject(
     keySourceStrings,
     keyResult.keysByText
   );
+  const mergedSourceAssignments = [
+    ...sourceAssignments,
+    ...keyAssignments.map((assignment) => ({
+      key: assignment.key,
+      file: assignment.file,
+      ...(assignment.pageName ? { pageName: assignment.pageName } : {}),
+      ...(assignment.pageNames ? { pageNames: assignment.pageNames } : {}),
+      ...(assignment.componentName
+        ? { componentName: assignment.componentName }
+        : {}),
+      ...(assignment.ownershipConfidence
+        ? { ownershipConfidence: assignment.ownershipConfidence }
+        : {}),
+      ...(assignment.unresolvedOwnership
+        ? { unresolvedOwnership: assignment.unresolvedOwnership }
+        : {})
+    }))
+  ];
   const sourceLocaleResult = buildSourceLocaleFromReferences(
     existingSourceLocale,
     keyAssignments,
-    sourceAssignments
+    mergedSourceAssignments
   );
 
   return {
     files,
     rawStrings: [...rawStrings, ...normalizedDynamicStrings],
     keyAssignments,
-    sourceAssignments:
-      keyAssignments.length > 0 ? keyAssignments : sourceAssignments,
+    sourceAssignments: mergedSourceAssignments,
     sourceLocale: sourceLocaleResult.locale,
     keysByText: keyResult.keysByText,
     usedFallbackKeys: keyResult.usedFallback,

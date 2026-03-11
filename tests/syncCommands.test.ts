@@ -301,6 +301,75 @@ describe("sync-related commands", () => {
     expect(localeHook).toContain("document.cookie");
   });
 
+  it("keeps manifest imports aligned when a project mixes existing keys and new raw strings", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-sync-manifest-stable-"));
+    tempDirectories.push(rootDir);
+    process.chdir(rootDir);
+    await mkdir(path.join(rootDir, "src"), { recursive: true });
+    await writeTextFile(
+      path.join(rootDir, "globalyze.config.ts"),
+      [
+        "export default {",
+        '  sourceDir: "src",',
+        '  localesDir: "locales",',
+        '  languages: ["en", "fr"],',
+        '  ignore: ["node_modules", "dist", "build", ".next", ".git"],',
+        '  localeStructure: { format: "js", structure: "multiple", splitStrategy: "page", commonFile: true, naming: "camel", unresolvedOwnership: "common" },',
+        "  cacheTranslations: true,",
+        "  dynamicExtraction: false,",
+        '  i18nAdapter: "generic",',
+        "  translationInstructions: [],",
+        '  sourceLocale: "en",',
+        '  openAiModel: "gpt-4o-mini",',
+        '  geminiModel: "gemini-2.5-flash-lite",',
+        "  aiBatchSize: 20,",
+        '  translationImportPath: "@/i18n",',
+        '  translationFunctionName: "t",',
+        "  governance: { enabled: false, failOnLockedChange: true, failOnApprovalRequiredChange: false }",
+        "};",
+        ""
+      ].join("\n")
+    );
+    await writeTextFile(
+      path.join(rootDir, "src", "page.tsx"),
+      [
+        "export default function Page() {",
+        "  return (",
+        "    <main>",
+        '      <button>{t("social.button.google")}</button>',
+        "      <button>Checkout</button>",
+        "    </main>",
+        "  );",
+        "}",
+        ""
+      ].join("\n")
+    );
+    await mkdir(path.join(rootDir, "locales", "en"), { recursive: true });
+    await writeTextFile(
+      path.join(rootDir, "locales", "en", "homePage.js"),
+      'export const homePage = {"social.button.google":"Continue with Google"};\n'
+    );
+
+    await executeSyncCommand();
+
+    const manifest = await readFile(
+      path.join(rootDir, "src", "lib", "i18n", "translations.generated.ts"),
+      "utf8"
+    );
+    const frenchImportMatch = /from "\.\.\/\.\.\/\.\.\/locales\/fr\/([^"]+)"/.exec(manifest);
+
+    expect(frenchImportMatch?.[1]).toBeDefined();
+    const frenchBucketFile = frenchImportMatch?.[1] ?? "missing.js";
+    const frenchBucketContents = await readFile(
+      path.join(rootDir, "locales", "fr", frenchBucketFile),
+      "utf8"
+    );
+
+    expect(manifest).not.toContain("socialPage.js");
+    expect(frenchBucketContents).toContain('"social.button.google": "Continue with Google"');
+    expect(frenchBucketContents).toContain('"Checkout"');
+  });
+
   it("keeps the run alias working with a deprecation warning", async () => {
     const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-run-"));
     tempDirectories.push(rootDir);

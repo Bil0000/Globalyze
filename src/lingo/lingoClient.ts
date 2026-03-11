@@ -118,13 +118,25 @@ export async function translateLocales(
 
   for (const language of targetLanguages) {
     try {
+      const existingLocale = await readLocaleDictionary(config, language);
       const cached = config.cacheTranslations
         ? await getCachedTranslations(sourceLocale, language, config.rootDir)
         : { translations: {}, hits: 0 };
       cacheHits += cached.hits;
+      const reusableTranslations = Object.fromEntries(
+        Object.entries(sourceLocale).flatMap(([key]) => {
+          const existingValue = existingLocale[key];
+
+          return typeof existingValue === "string" && existingValue.trim().length > 0
+            ? [[key, existingValue] as const]
+            : [];
+        })
+      );
       const pendingSourceLocale = Object.fromEntries(
         Object.entries(sourceLocale).filter(
-          ([key]) => typeof cached.translations[key] !== "string"
+          ([key]) =>
+            typeof cached.translations[key] !== "string" &&
+            typeof reusableTranslations[key] !== "string"
         )
       );
       const translated =
@@ -142,6 +154,7 @@ export async function translateLocales(
             })
           : {};
       const mergedTranslatedLocale = {
+        ...reusableTranslations,
         ...cached.translations,
         ...coerceTranslatedLocale(translated, pendingSourceLocale)
       };

@@ -63,7 +63,15 @@ describe("translateLocales", () => {
     tempDirectories.push(rootDir);
 
     const config = createTestConfig(rootDir, {
-      languages: ["en", "fr"]
+      languages: ["en", "fr"],
+      localeStructure: {
+        format: "json",
+        structure: "single",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "dot",
+        unresolvedOwnership: "common"
+      }
     });
 
     await syncLocaleFiles(config, {
@@ -229,5 +237,49 @@ describe("translateLocales", () => {
     expect(pageFile).toContain('"home.title": "fr:Global releases without the spreadsheet tax"');
     expect(marketingFile).toContain('"home.marketing_hero.book_demo": "fr:Book demo"');
     expect(pricingFile).toContain('"home.pricing.contact_sales": "fr:Contact sales"');
+  });
+
+  it("reuses existing translated locale values without calling the translation API again", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-lingo-cache-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      languages: ["en", "fr"],
+      localeStructure: {
+        format: "json",
+        structure: "single",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "dot",
+        unresolvedOwnership: "common"
+      }
+    });
+
+    await syncLocaleFiles(config, {
+      "checkout.buy_button": "Buy now",
+      "checkout.cancel_button": "Cancel"
+    });
+    await fs.writeJson(
+      path.join(config.localesDir, "fr", "fr.json"),
+      {
+        "checkout.buy_button": "Acheter",
+        "checkout.cancel_button": "Annuler"
+      },
+      { spaces: 2 }
+    );
+    process.env.LINGO_API_KEY = "test-key";
+    localizeObjectMock.mockImplementation(
+      (): Promise<Record<string, string>> =>
+        Promise.reject(new Error("translation API should not be called"))
+    );
+    const result = await translateLocales(config);
+    const locale = await readLocaleDictionary(config, "fr");
+
+    expect(result.usedMockTranslations).toBe(false);
+    expect(result.skippedReason).toBeUndefined();
+    expect(locale).toEqual({
+      "checkout.buy_button": "Acheter",
+      "checkout.cancel_button": "Annuler"
+    });
   });
 });
