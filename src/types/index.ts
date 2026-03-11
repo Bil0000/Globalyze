@@ -246,10 +246,12 @@ export interface TransformPreparationResult {
   rawStrings: ExtractedString[];
   keyAssignments: KeyAssignment[];
   sourceAssignments: LocaleKeyReference[];
+  sourceLocale: LocaleDictionary;
   keysByText: Map<string, string>;
   usedFallbackKeys: boolean;
   fallbackReason?: string;
   reusedExistingKeys: number;
+  recoveredSourceLocaleEntries: number;
 }
 
 export interface PreviewFileDiff {

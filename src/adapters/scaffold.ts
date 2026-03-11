@@ -1,8 +1,14 @@
 import path from "node:path";
 import fg from "fast-glob";
 
+import { detectRuntimeArtifactFlavor } from "../runtime/languageArtifacts";
 import type { ResolvedGlobalyzeConfig } from "../types";
-import { pathExists, writeTextFile } from "../utils/fileUtils";
+import { pathExists, readTextFile, writeTextFile } from "../utils/fileUtils";
+
+export interface LocalAdapterRuntimeResult {
+  path: string;
+  action: "created" | "updated";
+}
 
 function resolveLocalAdapterModulePath(
   config: ResolvedGlobalyzeConfig
@@ -20,11 +26,23 @@ function resolveLocalAdapterModulePath(
   return null;
 }
 
+function isGeneratedLocalAdapterRuntime(contents: string): boolean {
+  return (
+    contents.includes("export type TranslationValues") &&
+    contents.includes("export function t") &&
+    (
+      contents.includes('globalyze.locale') ||
+      contents.includes("return key.replace(/\\{(\\w+)\\}/g") ||
+      contents.includes("function interpolateTranslation(")
+    )
+  );
+}
+
 async function resolveGeneratedManifestImportPath(
   config: ResolvedGlobalyzeConfig,
   runtimePath: string
 ): Promise<string | null> {
-  const manifests = await fg(["**/translations.generated.ts"], {
+  const manifests = await fg(["**/translations.generated.{ts,js}"], {
     cwd: config.rootDir,
     absolute: true,
     onlyFiles: true,
@@ -49,24 +67,43 @@ async function resolveGeneratedManifestImportPath(
   return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
 }
 
+async function resolveDefaultGeneratedManifestImportPath(
+  config: ResolvedGlobalyzeConfig,
+  runtimePath: string
+): Promise<string> {
+  const flavor = await detectRuntimeArtifactFlavor(config);
+  const extension = flavor === "typescript" ? "ts" : "js";
+  const manifestPath = path.join(
+    config.sourceDir,
+    "lib",
+    "i18n",
+    `translations.generated.${extension}`
+  );
+  const relativePath = path
+    .relative(path.dirname(runtimePath), manifestPath)
+    .replace(/\\/g, "/")
+    .replace(/\.(ts|js)$/, "");
+
+  return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
+}
+
 export async function ensureLocalAdapterRuntime(
   config: ResolvedGlobalyzeConfig
-): Promise<string | null> {
+): Promise<LocalAdapterRuntimeResult | null> {
   if (config.i18nAdapter !== "generic" && config.i18nAdapter !== "custom") {
     return null;
   }
 
   const runtimePath = resolveLocalAdapterModulePath(config);
 
-  if (!runtimePath || (await pathExists(runtimePath))) {
+  if (!runtimePath) {
     return null;
   }
 
   const functionName = config.translationFunctionName;
-  const manifestImportPath = await resolveGeneratedManifestImportPath(
-    config,
-    runtimePath
-  );
+  const manifestImportPath =
+    (await resolveGeneratedManifestImportPath(config, runtimePath)) ??
+    (await resolveDefaultGeneratedManifestImportPath(config, runtimePath));
   const contents = manifestImportPath
     ? [
         `import { getTranslations } from ${JSON.stringify(manifestImportPath)};`,
@@ -128,6 +165,27 @@ export async function ensureLocalAdapterRuntime(
         ""
       ].join("\n");
 
+  if (await pathExists(runtimePath)) {
+    const existingContents = await readTextFile(runtimePath);
+
+    if (!isGeneratedLocalAdapterRuntime(existingContents)) {
+      return null;
+    }
+
+    if (existingContents === `${contents}\n` || existingContents === contents) {
+      return null;
+    }
+
+    await writeTextFile(runtimePath, contents);
+    return {
+      path: runtimePath,
+      action: "updated"
+    };
+  }
+
   await writeTextFile(runtimePath, contents);
-  return runtimePath;
+  return {
+    path: runtimePath,
+    action: "created"
+  };
 }

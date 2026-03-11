@@ -380,6 +380,8 @@ describe("runtime setup", () => {
 
     expect(localeHook).toContain("GlobalyzeLocaleProvider");
     expect(localeHook).toContain("TODO: connect this provider state to your custom i18n runtime.");
+    expect(localeHook).toContain('document.cookie = `${COOKIE_KEY}=${encodeURIComponent(nextLocale)}; path=/; max-age=31536000; SameSite=Lax`;');
+    expect(localeHook).toContain("window.location.reload();");
     expect(switcher).toContain("resolveLanguageLabel");
     expect(labels).toContain('"fr"');
     expect(labels).toContain('"ar"');
@@ -433,6 +435,8 @@ describe("runtime setup", () => {
     );
 
     expect(localeHook).toContain("<GlobalyzeLocaleContext.Provider");
+    expect(localeHook).toContain('document.cookie = `${COOKIE_KEY}=${encodeURIComponent(nextLocale)}; path=/; max-age=31536000; SameSite=Lax`;');
+    expect(localeHook).toContain("window.location.reload();");
     expect(localeHook).not.toContain("export interface");
     expect(switcher).toContain("export function GlobalyzeLanguageSwitcher");
     expect(switcher).not.toContain("GlobalyzeLanguageSwitcherProps");

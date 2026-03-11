@@ -1,10 +1,15 @@
 import path from "node:path";
+import { stat } from "node:fs/promises";
+import fs from "fs-extra";
 
 import { parse } from "@babel/parser";
-import traverse from "@babel/traverse";
+import traverse, { type NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
 import type { File } from "@babel/types";
 
+import { extractDynamicStringsFromSource } from "./dynamicExtractor";
+import type { DynamicExtractionCandidate } from "../types";
+import { ensureGlobalyzeState } from "../state/globalyzeState";
 import type { ExtractedString } from "../types";
 import { GlobalyzeError } from "../utils/errors";
 import { toPosixPath } from "../utils/fileUtils";
@@ -48,19 +53,7 @@ const TRANSLATABLE_OBJECT_PROPERTIES = new Set([
   "ariaDescription",
   "tab",
   "heading",
-  "subheading",
-  "header",
-  "status",
-  "source",
-  "reviewer",
-  "owner",
-  "account",
-  "stage",
-  "blocker",
-  "nextAction",
-  "priority",
-  "month",
-  "type"
+  "subheading"
 ]);
 
 const DATA_DRIVEN_PROPERTY_NAMES = new Set([
@@ -79,6 +72,41 @@ const DATA_DRIVEN_PROPERTY_NAMES = new Set([
   "name",
   "company"
 ]);
+
+interface CachedExtractedStringEntry {
+  text: string;
+  line: number;
+  column: number;
+  kind: ExtractedString["kind"];
+  attributeName?: string;
+  propertyName?: string;
+  elementType?: string;
+}
+
+interface CachedDynamicStringEntry {
+  text: string;
+  template: string;
+  line: number;
+  column: number;
+  variables: Record<string, string>;
+  elementType?: string;
+}
+
+interface ExtractionCacheEntry {
+  signature: string;
+  strings: CachedExtractedStringEntry[];
+  dynamicStrings: CachedDynamicStringEntry[];
+}
+
+interface ExtractionCacheFile {
+  version: 1;
+  files: Record<string, ExtractionCacheEntry>;
+}
+
+export interface FileExtractionAnalysis {
+  strings: ExtractedString[];
+  dynamicStrings: DynamicExtractionCandidate[];
+}
 
 function isLikelyUiDataFile(filePath: string): boolean {
   const normalizedFilePath = toPosixPath(filePath).toLowerCase();
@@ -107,6 +135,157 @@ function isLikelyDataDrivenProperty(
     DATA_DRIVEN_PROPERTY_NAMES.has(propertyName) &&
     isLikelyUiDataFile(filePath)
   );
+}
+
+function buildFileSignature(size: number, mtimeMs: number): string {
+  return `${String(size)}:${String(Math.trunc(mtimeMs))}`;
+}
+
+async function readExtractionCache(
+  projectRoot?: string
+): Promise<ExtractionCacheFile> {
+  if (!projectRoot) {
+    return {
+      version: 1,
+      files: {}
+    };
+  }
+
+  const statePaths = await ensureGlobalyzeState(projectRoot);
+  const parsed = (await fs.readJson(statePaths.extractionCachePath)) as unknown;
+
+  if (
+    typeof parsed !== "object" ||
+    parsed === null ||
+    Array.isArray(parsed) ||
+    (parsed as { version?: unknown }).version !== 1
+  ) {
+    return {
+      version: 1,
+      files: {}
+    };
+  }
+
+  const files = (parsed as { files?: unknown }).files;
+
+  return {
+    version: 1,
+    files:
+      typeof files === "object" && files !== null && !Array.isArray(files)
+        ? (files as Record<string, ExtractionCacheEntry>)
+        : {}
+  };
+}
+
+async function writeExtractionCache(
+  cache: ExtractionCacheFile,
+  projectRoot?: string
+): Promise<void> {
+  if (!projectRoot) {
+    return;
+  }
+
+  const statePaths = await ensureGlobalyzeState(projectRoot);
+  await fs.writeJson(statePaths.extractionCachePath, cache, { spaces: 2 });
+}
+
+function mayContainExtractableStrings(
+  source: string,
+  filePath: string,
+  includeDynamic: boolean
+): boolean {
+  if (filePath.endsWith(".json")) {
+    return true;
+  }
+
+  if (
+    /<[\w.-]+/.test(source) ||
+    /<\/[\w.-]+>/.test(source) ||
+    /\b(title|label|description|helperText|hint|placeholder|caption|tooltip|header|status|source|reviewer|owner|account|stage|blocker|nextAction|priority|month|type)\b\s*[:=]/.test(
+      source
+    ) ||
+    /\b(aria-label|aria-placeholder|alt|emptyMessage|errorMessage)\b\s*=/.test(
+      source
+    )
+  ) {
+    return true;
+  }
+
+  if (includeDynamic && source.includes("${") && source.includes("`")) {
+    return true;
+  }
+
+  return false;
+}
+
+function toCachedStringEntries(
+  items: readonly ExtractedString[]
+): CachedExtractedStringEntry[] {
+  return items.map((item) => ({
+    text: item.text,
+    line: item.line,
+    column: item.column,
+    kind: item.kind,
+    ...(item.attributeName ? { attributeName: item.attributeName } : {}),
+    ...(item.propertyName ? { propertyName: item.propertyName } : {}),
+    ...(item.elementType ? { elementType: item.elementType } : {})
+  }));
+}
+
+function toCachedDynamicEntries(
+  items: readonly DynamicExtractionCandidate[]
+): CachedDynamicStringEntry[] {
+  return items.map((item) => ({
+    text: item.text,
+    template: item.template,
+    line: item.line,
+    column: item.column,
+    variables: item.variables,
+    ...(item.elementType ? { elementType: item.elementType } : {})
+  }));
+}
+
+function applyMetadataToExtractedString(
+  item: CachedExtractedStringEntry,
+  filePath: string,
+  metadata?: ResolvedFileLocalizationMetadata
+): ExtractedString {
+  return {
+    text: item.text,
+    file: toPosixPath(filePath),
+    line: item.line,
+    column: item.column,
+    kind: item.kind,
+    ...(item.attributeName ? { attributeName: item.attributeName } : {}),
+    ...(item.propertyName ? { propertyName: item.propertyName } : {}),
+    componentName: metadata?.componentName,
+    pageName: metadata?.pageName,
+    pageNames: metadata?.pageNames,
+    ownershipConfidence: metadata?.ownershipConfidence,
+    unresolvedOwnership: metadata?.unresolvedOwnership,
+    elementType: item.elementType
+  };
+}
+
+function applyMetadataToDynamicString(
+  item: CachedDynamicStringEntry,
+  filePath: string,
+  metadata?: ResolvedFileLocalizationMetadata
+): DynamicExtractionCandidate {
+  return {
+    text: item.text,
+    template: item.template,
+    file: toPosixPath(filePath),
+    line: item.line,
+    column: item.column,
+    variables: item.variables,
+    componentName: metadata?.componentName,
+    pageName: metadata?.pageName,
+    pageNames: metadata?.pageNames,
+    ownershipConfidence: metadata?.ownershipConfidence,
+    unresolvedOwnership: metadata?.unresolvedOwnership,
+    elementType: item.elementType
+  };
 }
 
 function parseSource(source: string, filePath: string): File {
@@ -171,6 +350,48 @@ export function isDataDrivenTranslatablePropertyName(
   filePath: string
 ): boolean {
   return isLikelyDataDrivenProperty(propertyName, filePath);
+}
+
+function hasArrayExpressionAncestor(path: NodePath<t.ObjectProperty>): boolean {
+  let current: NodePath | null = path.parentPath;
+
+  while (current) {
+    if (current.isArrayExpression()) {
+      return true;
+    }
+
+    if (
+      current.isCallExpression() ||
+      current.isNewExpression() ||
+      current.isJSXExpressionContainer()
+    ) {
+      return false;
+    }
+
+    current = current.parentPath;
+  }
+
+  return false;
+}
+
+export function shouldExtractObjectProperty(
+  path: NodePath<t.ObjectProperty>,
+  filePath: string,
+  propertyName: string
+): boolean {
+  if (isTranslatableObjectPropertyName(propertyName)) {
+    return true;
+  }
+
+  if (!isLikelyDataDrivenProperty(propertyName, filePath)) {
+    return false;
+  }
+
+  if (filePath.endsWith(".json")) {
+    return true;
+  }
+
+  return hasArrayExpressionAncestor(path);
 }
 
 function resolvePropertyName(
@@ -360,8 +581,7 @@ export function extractStringsFromSource(
 
       if (
         !propertyName ||
-        (!isTranslatableObjectPropertyName(propertyName) &&
-          !isLikelyDataDrivenProperty(propertyName, filePath))
+        !shouldExtractObjectProperty(path, filePath, propertyName)
       ) {
         return;
       }
@@ -398,19 +618,85 @@ export function extractStringsFromSource(
 }
 
 export async function extractStringsFromFiles(
-  filePaths: readonly string[]
+  filePaths: readonly string[],
+  projectRoot?: string
 ): Promise<ExtractedString[]> {
-  const metadataMap = await buildFileLocalizationMetadata(filePaths);
-  const extracted = await Promise.all(
-    filePaths.map(async (filePath) => {
-      const source = await Bun.file(filePath).text();
-      return extractStringsFromSource(
-        source,
-        filePath,
-        metadataMap.get(toPosixPath(path.resolve(filePath)))
-      );
-    })
-  );
+  const analysis = await analyzeExtractableStringsFromFiles(filePaths, {
+    projectRoot,
+    includeDynamic: false
+  });
 
-  return extracted.flat();
+  return analysis.strings;
+}
+
+export async function analyzeExtractableStringsFromFiles(
+  filePaths: readonly string[],
+  options: {
+    projectRoot?: string;
+    includeDynamic?: boolean;
+  } = {}
+): Promise<FileExtractionAnalysis> {
+  const metadataMap = await buildFileLocalizationMetadata(filePaths);
+  const includeDynamic = options.includeDynamic ?? false;
+  const cache = await readExtractionCache(options.projectRoot);
+  let cacheDirty = false;
+  const strings: ExtractedString[] = [];
+  const dynamicStrings: DynamicExtractionCandidate[] = [];
+
+  for (const filePath of filePaths) {
+    const resolvedFilePath = path.resolve(filePath);
+    const posixFilePath = toPosixPath(resolvedFilePath);
+    const relativeFilePath = options.projectRoot
+      ? toPosixPath(path.relative(options.projectRoot, resolvedFilePath))
+      : posixFilePath;
+    const metadata = metadataMap.get(posixFilePath);
+    const fileStats = await stat(resolvedFilePath);
+    const signature = buildFileSignature(fileStats.size, fileStats.mtimeMs);
+    const cached = cache.files[relativeFilePath];
+
+    if (cached?.signature === signature) {
+      strings.push(
+        ...cached.strings.map((item) =>
+          applyMetadataToExtractedString(item, resolvedFilePath, metadata)
+        )
+      );
+      if (includeDynamic) {
+        dynamicStrings.push(
+          ...cached.dynamicStrings.map((item) =>
+            applyMetadataToDynamicString(item, resolvedFilePath, metadata)
+          )
+        );
+      }
+      continue;
+    }
+
+    const source = await Bun.file(resolvedFilePath).text();
+    let extractedStrings: ExtractedString[] = [];
+    let extractedDynamicStrings: DynamicExtractionCandidate[] = [];
+
+    if (mayContainExtractableStrings(source, resolvedFilePath, includeDynamic)) {
+      extractedStrings = extractStringsFromSource(source, resolvedFilePath, metadata);
+      extractedDynamicStrings = includeDynamic
+        ? extractDynamicStringsFromSource(source, resolvedFilePath, metadata)
+        : [];
+    }
+
+    strings.push(...extractedStrings);
+    dynamicStrings.push(...extractedDynamicStrings);
+    cache.files[relativeFilePath] = {
+      signature,
+      strings: toCachedStringEntries(extractedStrings),
+      dynamicStrings: toCachedDynamicEntries(extractedDynamicStrings)
+    };
+    cacheDirty = true;
+  }
+
+  if (cacheDirty) {
+    await writeExtractionCache(cache, options.projectRoot);
+  }
+
+  return {
+    strings,
+    dynamicStrings
+  };
 }

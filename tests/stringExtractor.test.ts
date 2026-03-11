@@ -79,6 +79,23 @@ describe("extractStringsFromSource", () => {
     ]);
   });
 
+  it("does not extract date formatting option literals as UI strings", () => {
+    const source = [
+      "const formatted = new Date().toLocaleDateString(\"en-US\", {",
+      '  month: "short",',
+      '  day: "numeric"',
+      "});",
+      ""
+    ].join("\n");
+
+    const extracted = extractStringsFromSource(
+      source,
+      "/tmp/demo/src/app/dashboard/default/_components/chart-area-interactive.tsx"
+    );
+
+    expect(extracted.map((entry) => entry.text)).toEqual([]);
+  });
+
   it("extracts translatable values from json data files", () => {
     const source = JSON.stringify(
       [

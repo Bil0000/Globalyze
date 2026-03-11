@@ -229,6 +229,34 @@ function buildDevSwitcherElement(): t.JSXExpressionContainer {
   );
 }
 
+function appendDevSwitcherWithinTree(
+  node: t.JSXElement | t.JSXFragment | t.JSXExpressionContainer
+): t.JSXElement | t.JSXFragment | t.JSXExpressionContainer {
+  const switcher = buildDevSwitcherElement();
+
+  if (t.isJSXExpressionContainer(node)) {
+    return t.jsxFragment(
+      t.jsxOpeningFragment(),
+      t.jsxClosingFragment(),
+      [node, switcher]
+    );
+  }
+
+  if (t.isJSXFragment(node)) {
+    return t.jsxFragment(
+      t.jsxOpeningFragment(),
+      t.jsxClosingFragment(),
+      [...node.children, switcher]
+    );
+  }
+
+  return t.jsxElement(
+    node.openingElement,
+    node.closingElement,
+    [...node.children, switcher]
+  );
+}
+
 function hasComponentUsage(ast: t.File, componentName: string): boolean {
   let found = false;
 
@@ -439,18 +467,25 @@ async function wireComponentReturnFile(
       }
 
       matches += 1;
-      const children: (t.JSXElement | t.JSXFragment | t.JSXExpressionContainer)[] = [
-        buildWrappedApplication(argument, {
-          adapterName: options.adapterName,
-          providerComponentName: options.providerComponentName,
-          wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
-        })
-      ];
+      const applicationRoot =
+        !hasExistingSwitcher
+          ? appendDevSwitcherWithinTree(argument)
+          : argument;
 
       if (!hasExistingSwitcher) {
-        children.push(buildDevSwitcherElement());
         devSwitcherInjected = true;
       }
+
+      const children: (t.JSXElement | t.JSXFragment | t.JSXExpressionContainer)[] = [
+        buildWrappedApplication(
+          applicationRoot,
+          {
+            adapterName: options.adapterName,
+            providerComponentName: options.providerComponentName,
+            wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
+          }
+        )
+      ];
 
       path.node.argument = t.jsxFragment(
         t.jsxOpeningFragment(),
@@ -521,30 +556,37 @@ async function wireNextAppRouterLayout(
       }
 
       matchedBodies += 1;
+      const bodyTree =
+        !hasExistingSwitcher
+          ? t.jsxFragment(
+              t.jsxOpeningFragment(),
+              t.jsxClosingFragment(),
+              [...path.node.children, buildDevSwitcherElement()]
+            )
+          : t.jsxFragment(
+              t.jsxOpeningFragment(),
+              t.jsxClosingFragment(),
+              path.node.children
+            );
 
-      const replacementChildren: (
+      const wrappedChildren: (
         t.JSXElement | t.JSXFragment | t.JSXExpressionContainer
       )[] = [
         buildWrappedApplication(
-          t.jsxFragment(
-            t.jsxOpeningFragment(),
-            t.jsxClosingFragment(),
-            path.node.children
-          ),
+          bodyTree,
           {
-          adapterName: options.adapterName,
-          providerComponentName: options.providerComponentName,
-          wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
+            adapterName: options.adapterName,
+            providerComponentName: options.providerComponentName,
+            wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
           }
         )
       ];
 
       if (!hasExistingSwitcher) {
-        replacementChildren.push(buildDevSwitcherElement());
         devSwitcherInjected = true;
       }
 
-      path.node.children = replacementChildren;
+      path.node.children = wrappedChildren;
       updated = true;
       path.stop();
     }
@@ -605,20 +647,27 @@ async function wireViteEntry(
       }
 
       renderCalls += 1;
+      const applicationRoot =
+        !hasExistingSwitcher
+          ? appendDevSwitcherWithinTree(firstArgument)
+          : firstArgument;
+
+      if (!hasExistingSwitcher) {
+        devSwitcherInjected = true;
+      }
+
       const fragmentChildren: (
         t.JSXElement | t.JSXFragment | t.JSXExpressionContainer
       )[] = [
-        buildWrappedApplication(firstArgument, {
-          adapterName: options.adapterName,
-          providerComponentName: options.providerComponentName,
-          wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
-        })
+        buildWrappedApplication(
+          applicationRoot,
+          {
+            adapterName: options.adapterName,
+            providerComponentName: options.providerComponentName,
+            wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
+          }
+        )
       ];
-
-      if (!hasExistingSwitcher) {
-        fragmentChildren.push(buildDevSwitcherElement());
-        devSwitcherInjected = true;
-      }
 
       path.node.arguments[0] = t.jsxFragment(
         t.jsxOpeningFragment(),

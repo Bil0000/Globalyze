@@ -27,6 +27,175 @@ export function buildSourceLocale(
   return locale;
 }
 
+function formatNumericKeySegment(segment: string): string | null {
+  const parts = segment.split("_").filter(Boolean);
+
+  if (parts.length === 0 || !parts.every((part) => /^\d+$/.test(part))) {
+    return null;
+  }
+
+  const [whole, fractional, decimal] = parts;
+
+  if (
+    whole &&
+    fractional &&
+    decimal &&
+    fractional.length === 3 &&
+    decimal.length === 2
+  ) {
+    return `${whole},${fractional}.${decimal}`;
+  }
+
+  if (whole && fractional && parts.length === 2 && fractional.length === 1) {
+    return `${whole}.${fractional}`;
+  }
+
+  if (whole && fractional && parts.length === 2 && fractional.length === 2) {
+    return `${whole}.${fractional}`;
+  }
+
+  return parts.join(" ");
+}
+
+const UPPERCASE_TOKENS = new Set([
+  "api",
+  "crm",
+  "ui",
+  "ux",
+  "id",
+  "url",
+  "seo",
+  "saas",
+  "sms",
+  "otp",
+  "kpi"
+]);
+
+const LOWERCASE_TITLE_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "by",
+  "for",
+  "from",
+  "in",
+  "of",
+  "on",
+  "or",
+  "the",
+  "to",
+  "up",
+  "with"
+]);
+
+function toSentenceCase(value: string): string {
+  const trimmed = value.trim();
+
+  if (trimmed.length === 0) {
+    return trimmed;
+  }
+
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
+}
+
+function toTitleCase(value: string): string {
+  const words = value.split(/\s+/).filter(Boolean);
+
+  return words
+    .map((word, index) => {
+      const lower = word.toLowerCase();
+
+      if (UPPERCASE_TOKENS.has(lower)) {
+        return lower.toUpperCase();
+      }
+
+      if (index > 0 && LOWERCASE_TITLE_WORDS.has(lower)) {
+        return lower;
+      }
+
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join(" ");
+}
+
+export function inferSourceTextFromKey(key: string): string {
+  const segments = key.split(".").filter(Boolean);
+  const rawSegment = segments.at(-1) ?? key;
+  const numeric = formatNumericKeySegment(rawSegment);
+
+  if (numeric) {
+    return numeric;
+  }
+
+  const normalized = rawSegment
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (normalized.length === 0) {
+    return key;
+  }
+
+  const lowerKey = key.toLowerCase();
+  const isSentenceLike =
+    lowerKey.includes("description") ||
+    lowerKey.includes("subtitle") ||
+    lowerKey.includes("message") ||
+    lowerKey.includes("caption") ||
+    lowerKey.includes("helper") ||
+    lowerKey.includes("hint") ||
+    lowerKey.includes("tooltip") ||
+    lowerKey.includes(".div.") ||
+    lowerKey.includes(".span.") ||
+    lowerKey.includes(".p.");
+
+  return isSentenceLike
+    ? toSentenceCase(normalized)
+    : toTitleCase(normalized);
+}
+
+export function buildSourceLocaleFromReferences(
+  existingSourceLocale: LocaleDictionary,
+  keyAssignments: readonly KeyAssignment[],
+  sourceAssignments: readonly LocaleKeyReference[]
+): { locale: LocaleDictionary; recoveredCount: number } {
+  const nextSourceLocale: LocaleDictionary = {};
+  const recovered = new Set<string>();
+  const assignedByKey = new Map(
+    keyAssignments.map((assignment) => [assignment.key, assignment.text] as const)
+  );
+  const activeKeys = new Set<string>([
+    ...sourceAssignments.map((assignment) => assignment.key),
+    ...keyAssignments.map((assignment) => assignment.key)
+  ]);
+
+  for (const key of activeKeys) {
+    const assignedText = assignedByKey.get(key);
+
+    if (assignedText) {
+      nextSourceLocale[key] = assignedText;
+      continue;
+    }
+
+    const existingValue = existingSourceLocale[key];
+
+    if (typeof existingValue === "string" && existingValue.trim().length > 0) {
+      nextSourceLocale[key] = existingValue;
+      continue;
+    }
+
+    nextSourceLocale[key] = inferSourceTextFromKey(key);
+    recovered.add(key);
+  }
+
+  return {
+    locale: nextSourceLocale,
+    recoveredCount: recovered.size
+  };
+}
+
 function mergeMetadata(
   current: LocaleEntryDictionary,
   nextValues: LocaleDictionary

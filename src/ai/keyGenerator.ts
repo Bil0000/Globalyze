@@ -597,6 +597,7 @@ export async function generateSemanticKeys(
   const keysByText = new Map<string, string>();
   const existingLocale = options.existingLocale ?? {};
   const reservedKeys = new Set<string>();
+  const exactLocaleKeysByValue = new Map<string, string[]>();
   const openAiKeys =
     options.apiKeys ??
     (options.apiKey
@@ -627,14 +628,20 @@ export async function generateSemanticKeys(
     reservedKeys.add(uniqueKey);
   };
 
+  for (const [key, value] of Object.entries(existingLocale)) {
+    const keys = exactLocaleKeysByValue.get(value) ?? [];
+    keys.push(key);
+    exactLocaleKeysByValue.set(value, keys);
+  }
+
   for (const candidate of candidates) {
-    const exactMatch = Object.entries(existingLocale).find(
-      ([key, value]) => value === candidate.text && !reservedKeys.has(key)
-    );
+    const exactMatch = exactLocaleKeysByValue
+      .get(candidate.text)
+      ?.find((key) => !reservedKeys.has(key));
 
     if (exactMatch) {
-      keysByText.set(candidate.text, exactMatch[0]);
-      reservedKeys.add(exactMatch[0]);
+      keysByText.set(candidate.text, exactMatch);
+      reservedKeys.add(exactMatch);
       reusedExistingKeys += 1;
       continue;
     }

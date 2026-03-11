@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { confirm, isCancel } from "@clack/prompts";
 
 import { resolveI18nAdapter } from "../adapters";
+import { collectProjectStrings } from "../cli/pipeline";
 import {
   inspectRuntimeProviderTarget,
   setupRuntimeProvider
@@ -137,6 +138,21 @@ export async function executeGlobalizeCommand(
   );
 
   const result = await executeSyncCommand(options);
+  const audit = await logger.step(
+    "Reviewing extraction coverage",
+    () => collectProjectStrings(config),
+    (scanResult) =>
+      `Found ${String(scanResult.strings.length)} remaining extractable UI strings across ${String(scanResult.files.length)} files`
+  );
+
+  if (audit.strings.length > 0) {
+    logger.warn(
+      `Post-migration audit found ${String(audit.strings.length)} remaining extractable UI strings. Run \`globalyze audit\` to review the remaining misses.`
+    );
+  } else {
+    logger.success("Post-migration audit found no remaining extractable UI strings.");
+  }
+
   logger.newline();
   logger.heading("Globalyze Migration Complete");
   logger.info("Project globalization setup finished.");

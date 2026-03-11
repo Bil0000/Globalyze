@@ -5,10 +5,10 @@ import { prepareTransformProject } from "../cli/pipeline";
 import { extractTranslationKeyReferencesFromFiles } from "../extractor/translationKeyExtractor";
 import { updateTranslationGraph } from "../graph/translationGraph";
 import {
-  buildSourceLocale,
   readLocaleEntries,
   syncLocaleFiles
 } from "../i18n/localeManager";
+import { ensureLanguageArtifacts } from "../runtime/languageArtifacts";
 import { translateLocales } from "../lingo/lingoClient";
 import { refreshGeneratedTranslationManifests } from "../runtime/translationsManifest";
 import { transformFiles } from "../transformer/astTransformer";
@@ -154,8 +154,19 @@ export async function executeSyncCommand(
     () => ensureLocalAdapterRuntime(config),
     (result) =>
       result
-        ? `Created translation runtime scaffold at ${result}`
+        ? `${result.action === "created" ? "Created" : "Updated"} translation runtime scaffold at ${result.path}`
         : "Translation runtime module is ready"
+  );
+  const refreshedLanguageArtifacts = await logger.step(
+    "Ensuring locale runtime artifacts",
+    () => ensureLanguageArtifacts(config),
+    (result) => {
+      const touched = [...result.created, ...result.updated];
+
+      return touched.length > 0
+        ? `Updated ${String(touched.length)} locale runtime artifact${touched.length === 1 ? "" : "s"}`
+        : "Locale runtime artifacts are ready";
+    }
   );
   logInterruptHint();
   logAnalysisHint();
@@ -172,7 +183,7 @@ export async function executeSyncCommand(
     config,
     config.sourceLocale
   );
-  const nextSourceLocale = buildSourceLocale(prepared.keyAssignments);
+  const nextSourceLocale = prepared.sourceLocale;
   const nextSourceEntries = toGovernedEntries(currentSourceEntries, nextSourceLocale);
   const governance = evaluateTranslationGovernance(
     currentSourceEntries,
@@ -202,6 +213,14 @@ export async function executeSyncCommand(
       paths.length > 0
         ? `Updated ${String(paths.length)} generated translation manifest${paths.length === 1 ? "" : "s"}`
         : "No generated translation manifests were found"
+  );
+  const refreshedRuntime = await logger.step(
+    "Refreshing translation runtime module",
+    () => ensureLocalAdapterRuntime(config),
+    (result) =>
+      result
+        ? `${result.action === "created" ? "Created" : "Updated"} translation runtime scaffold at ${result.path}`
+        : "Translation runtime module is already aligned"
   );
   const references = await logger.step(
     "Refreshing translation graph",
@@ -249,13 +268,23 @@ export async function executeSyncCommand(
   if (refreshedManifests.length > 0) {
     logger.info(`Refreshed: ${refreshedManifests.join(", ")}`);
   }
+  const touchedArtifacts = [
+    ...refreshedLanguageArtifacts.created,
+    ...refreshedLanguageArtifacts.updated
+  ];
+  if (touchedArtifacts.length > 0) {
+    logger.info(`Updated runtime artifacts: ${touchedArtifacts.join(", ")}`);
+  }
   if (translation.skippedReason) {
     logger.info(translation.skippedReason);
   }
 
   const updatedFiles = transformedFiles.filter((item) => item.updated);
-  if (scaffoldedRuntime) {
-    logger.info(`Created ${scaffoldedRuntime} for ${config.translationImportPath}.`);
+  const runtimeResult = refreshedRuntime ?? scaffoldedRuntime;
+  if (runtimeResult) {
+    logger.info(
+      `${runtimeResult.action === "created" ? "Created" : "Updated"} ${runtimeResult.path} for ${config.translationImportPath}.`
+    );
   }
   logger.newline();
   logger.heading("Globalyze Sync Complete");

@@ -207,4 +207,47 @@ describe("generated translation manifest refresh", () => {
     expect(manifest).toContain('import { homePage as ar_home_page } from "../../../locales/ar/homePage";');
     expect(manifest).toContain('} as const;');
   });
+
+  it("creates a generated manifest at the default runtime location when none exists yet", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-runtime-manifest-create-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      languages: ["en", "ar"],
+      localeStructure: {
+        format: "js",
+        structure: "multiple",
+        splitStrategy: "page",
+        commonFile: true,
+        naming: "camel",
+        unresolvedOwnership: "common"
+      }
+    });
+
+    await mkdir(path.join(rootDir, "src"), { recursive: true });
+    await mkdir(path.join(rootDir, "locales", "en"), { recursive: true });
+    await mkdir(path.join(rootDir, "locales", "ar"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "locales", "en", "homePage.js"),
+      'export const homePage = {"home.title":"Home"};\n'
+    );
+    await writeFile(
+      path.join(rootDir, "locales", "ar", "homePage.js"),
+      'export const homePage = {"home.title":"الرئيسية"};\n'
+    );
+
+    const paths = await refreshGeneratedTranslationManifests(config);
+    const manifestPath = path.join(
+      rootDir,
+      "src",
+      "lib",
+      "i18n",
+      "translations.generated.js"
+    );
+    const manifest = await readFile(manifestPath, "utf8");
+
+    expect(paths).toEqual([manifestPath]);
+    expect(manifest).toContain('import { homePage as en_home_page } from "../../../locales/en/homePage.js";');
+    expect(manifest).toContain("export function getTranslations(locale)");
+  });
 });

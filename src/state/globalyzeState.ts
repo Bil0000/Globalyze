@@ -10,6 +10,7 @@ export interface GlobalyzeStatePaths {
   translationGraphPath: string;
   translationsCachePath: string;
   projectStatePath: string;
+  extractionCachePath: string;
 }
 
 export interface GlobalyzeProjectState {
@@ -26,7 +27,8 @@ export function getGlobalyzeStatePaths(projectRoot?: string): GlobalyzeStatePath
     stateDir,
     translationGraphPath: path.join(stateDir, "translationGraph.json"),
     translationsCachePath: path.join(stateDir, "translations.json"),
-    projectStatePath: path.join(stateDir, "projectState.json")
+    projectStatePath: path.join(stateDir, "projectState.json"),
+    extractionCachePath: path.join(stateDir, "extractionCache.json")
   };
 }
 
@@ -47,6 +49,10 @@ export async function ensureGlobalyzeState(
 
   if (!(await fs.pathExists(paths.projectStatePath))) {
     await fs.writeJson(paths.projectStatePath, {}, { spaces: 2 });
+  }
+
+  if (!(await fs.pathExists(paths.extractionCachePath))) {
+    await fs.writeJson(paths.extractionCachePath, { version: 1, files: {} }, { spaces: 2 });
   }
 
   return paths;

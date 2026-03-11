@@ -1,6 +1,8 @@
 import path from "node:path";
 import { rename } from "node:fs/promises";
 
+import fg from "fast-glob";
+
 import { resolveI18nAdapter } from "../adapters";
 import type { ResolvedGlobalyzeConfig } from "../types";
 import { pathExists, readTextFile, writeTextFile } from "../utils/fileUtils";
@@ -25,10 +27,11 @@ export interface LanguageArtifactResult {
   localeHookPath: string;
   switcherPath: string;
   created: string[];
+  updated: string[];
   skipped: string[];
 }
 
-type RuntimeArtifactFlavor = "typescript" | "javascript";
+export type RuntimeArtifactFlavor = "typescript" | "javascript";
 
 interface RuntimeArtifactPaths {
   labelsPath: string;
@@ -246,15 +249,35 @@ function buildLocaleHookContents(
       "",
       `const DEFAULT_LOCALE = ${defaultLocale};`,
       'const STORAGE_KEY = "globalyze.locale";',
+      'const COOKIE_KEY = "globalyze.locale";',
       "",
       "const GlobalyzeLocaleContext = React.createContext(null);",
+      "",
+      "function readCookieLocale() {",
+      '  if (typeof document === "undefined") {',
+      "    return null;",
+      "  }",
+      "",
+      "  const cookies = document.cookie.split(/;\\s*/).filter(Boolean);",
+      '  const match = cookies.find((entry) => entry.startsWith(`${COOKIE_KEY}=`));',
+      "  return match ? decodeURIComponent(match.slice(COOKIE_KEY.length + 1)) : null;",
+      "}",
       "",
       "function readStoredLocale() {",
       "  if (typeof window === \"undefined\") {",
       "    return DEFAULT_LOCALE;",
       "  }",
       "",
-      "  return window.localStorage.getItem(STORAGE_KEY) ?? DEFAULT_LOCALE;",
+      "  return window.localStorage.getItem(STORAGE_KEY) ?? readCookieLocale() ?? DEFAULT_LOCALE;",
+      "}",
+      "",
+      "function persistLocale(nextLocale) {",
+      '  if (typeof window === "undefined") {',
+      "    return;",
+      "  }",
+      "",
+      "  window.localStorage.setItem(STORAGE_KEY, nextLocale);",
+      '  document.cookie = `${COOKIE_KEY}=${encodeURIComponent(nextLocale)}; path=/; max-age=31536000; SameSite=Lax`;',
       "}",
       "",
       "export function GlobalyzeLocaleProvider({ children }) {",
@@ -281,8 +304,11 @@ function buildLocaleHookContents(
       "    setLocaleState(nextLocale);",
       "",
       "    if (typeof window !== \"undefined\") {",
-      "      window.localStorage.setItem(STORAGE_KEY, nextLocale);",
+      "      persistLocale(nextLocale);",
       '      window.dispatchEvent(new CustomEvent("globalyze:locale-change"));',
+      "      window.setTimeout(() => {",
+      "        window.location.reload();",
+      "      }, 0);",
       "    }",
       "  }, []);",
       "",
@@ -320,15 +346,35 @@ function buildLocaleHookContents(
     "",
     `const DEFAULT_LOCALE = ${defaultLocale};`,
     'const STORAGE_KEY = "globalyze.locale";',
+    'const COOKIE_KEY = "globalyze.locale";',
     "",
     "const GlobalyzeLocaleContext = React.createContext<GlobalyzeLocaleController | null>(null);",
+    "",
+    "function readCookieLocale(): string | null {",
+    '  if (typeof document === "undefined") {',
+    "    return null;",
+    "  }",
+    "",
+    "  const cookies = document.cookie.split(/;\\s*/).filter(Boolean);",
+    '  const match = cookies.find((entry) => entry.startsWith(`${COOKIE_KEY}=`));',
+    "  return match ? decodeURIComponent(match.slice(COOKIE_KEY.length + 1)) : null;",
+    "}",
     "",
     "function readStoredLocale(): string {",
     "  if (typeof window === \"undefined\") {",
     "    return DEFAULT_LOCALE;",
     "  }",
     "",
-    "  return window.localStorage.getItem(STORAGE_KEY) ?? DEFAULT_LOCALE;",
+    "  return window.localStorage.getItem(STORAGE_KEY) ?? readCookieLocale() ?? DEFAULT_LOCALE;",
+    "}",
+    "",
+    "function persistLocale(nextLocale: string): void {",
+    '  if (typeof window === "undefined") {',
+    "    return;",
+    "  }",
+    "",
+    "  window.localStorage.setItem(STORAGE_KEY, nextLocale);",
+    '  document.cookie = `${COOKIE_KEY}=${encodeURIComponent(nextLocale)}; path=/; max-age=31536000; SameSite=Lax`;',
     "}",
     "",
     "export function GlobalyzeLocaleProvider(",
@@ -357,8 +403,11 @@ function buildLocaleHookContents(
     "    setLocaleState(nextLocale);",
     "",
     "    if (typeof window !== \"undefined\") {",
-    "      window.localStorage.setItem(STORAGE_KEY, nextLocale);",
+    "      persistLocale(nextLocale);",
     '      window.dispatchEvent(new CustomEvent("globalyze:locale-change"));',
+    "      window.setTimeout(() => {",
+    "        window.location.reload();",
+    "      }, 0);",
     "    }",
     "  }, []);",
     "",
@@ -465,16 +514,28 @@ function buildLanguageSwitcherContents(
   ].join("\n");
 }
 
-async function writeIfMissing(
+async function writeGeneratedArtifact(
   filePath: string,
-  contents: string
-): Promise<"created" | "skipped"> {
-  if (await pathExists(filePath)) {
+  contents: string,
+  validator: (contents: string) => boolean
+): Promise<"created" | "updated" | "skipped"> {
+  if (!(await pathExists(filePath))) {
+    await writeTextFile(filePath, contents);
+    return "created";
+  }
+
+  const existingContents = await readTextFile(filePath);
+
+  if (!validator(existingContents)) {
+    return "skipped";
+  }
+
+  if (existingContents === contents || existingContents === `${contents}\n`) {
     return "skipped";
   }
 
   await writeTextFile(filePath, contents);
-  return "created";
+  return "updated";
 }
 
 function isGeneratedLocaleHook(contents: string): boolean {
@@ -524,7 +585,7 @@ async function migrateLegacyLocaleHook(
   return "created";
 }
 
-async function detectRuntimeArtifactFlavor(
+export async function detectRuntimeArtifactFlavor(
   config: ResolvedGlobalyzeConfig
 ): Promise<RuntimeArtifactFlavor> {
   if (await pathExists(path.join(config.rootDir, "tsconfig.json"))) {
@@ -582,6 +643,28 @@ async function detectRuntimeArtifactFlavor(
     }
   }
 
+  const typeScriptSourceFiles = await fg(["**/*.{ts,tsx}"], {
+    cwd: config.sourceDir,
+    absolute: true,
+    onlyFiles: true,
+    ignore: [...config.ignore.map((segment) => `${segment}/**`), "locales/**"]
+  });
+
+  if (typeScriptSourceFiles.length > 0) {
+    return "typescript";
+  }
+
+  const javascriptSourceFiles = await fg(["**/*.{js,jsx}"], {
+    cwd: config.sourceDir,
+    absolute: true,
+    onlyFiles: true,
+    ignore: [...config.ignore.map((segment) => `${segment}/**`), "locales/**"]
+  });
+
+  if (javascriptSourceFiles.length > 0) {
+    return "javascript";
+  }
+
   if (await pathExists(path.join(config.rootDir, "jsconfig.json"))) {
     return "javascript";
   }
@@ -631,6 +714,7 @@ export async function ensureLanguageArtifacts(
   ].filter((filePath) => filePath !== switcherPath);
 
   const created: string[] = [];
+  const updated: string[] = [];
   const skipped: string[] = [];
 
   for (const legacyPath of legacyLocaleHookPaths) {
@@ -679,15 +763,18 @@ export async function ensureLanguageArtifacts(
   const writes = [
     {
       path: labelsPath,
-      contents: buildLanguageLabelsContents(config, flavor)
+      contents: buildLanguageLabelsContents(config, flavor),
+      validator: isGeneratedLanguageLabels
     },
     {
       path: localeHookPath,
-      contents: buildLocaleHookContents(config, flavor)
+      contents: buildLocaleHookContents(config, flavor),
+      validator: isGeneratedLocaleHook
     },
     {
       path: switcherPath,
-      contents: buildLanguageSwitcherContents(flavor)
+      contents: buildLanguageSwitcherContents(flavor),
+      validator: isGeneratedLanguageSwitcher
     }
   ] as const;
 
@@ -696,10 +783,16 @@ export async function ensureLanguageArtifacts(
       continue;
     }
 
-    const result = await writeIfMissing(file.path, file.contents);
+    const result = await writeGeneratedArtifact(
+      file.path,
+      file.contents,
+      file.validator
+    );
 
     if (result === "created") {
       created.push(file.path);
+    } else if (result === "updated") {
+      updated.push(file.path);
     } else {
       skipped.push(file.path);
     }
@@ -710,6 +803,7 @@ export async function ensureLanguageArtifacts(
     localeHookPath,
     switcherPath,
     created,
+    updated,
     skipped
   };
 }

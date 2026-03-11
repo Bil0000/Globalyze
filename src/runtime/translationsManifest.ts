@@ -4,6 +4,7 @@ import fg from "fast-glob";
 import fs from "fs-extra";
 
 import { buildJsLocaleExportName } from "../i18n/writers/shared";
+import { detectRuntimeArtifactFlavor } from "./languageArtifacts";
 import type { ResolvedGlobalyzeConfig } from "../types";
 import { toPosixPath, writeTextFile } from "../utils/fileUtils";
 
@@ -56,7 +57,7 @@ function buildManifestImportPath(
 async function findGeneratedManifestPaths(
   config: ResolvedGlobalyzeConfig
 ): Promise<string[]> {
-  const matches = await fg(["**/translations.generated.ts"], {
+  const matches = await fg(["**/translations.generated.{ts,js}"], {
     cwd: config.rootDir,
     absolute: true,
     onlyFiles: true,
@@ -64,6 +65,20 @@ async function findGeneratedManifestPaths(
   });
 
   return matches.sort((left, right) => left.localeCompare(right));
+}
+
+async function resolveDefaultGeneratedManifestPath(
+  config: ResolvedGlobalyzeConfig
+): Promise<string> {
+  const flavor = await detectRuntimeArtifactFlavor(config);
+  const extension = flavor === "typescript" ? "ts" : "js";
+
+  return path.join(
+    config.sourceDir,
+    "lib",
+    "i18n",
+    `translations.generated.${extension}`
+  );
 }
 
 async function readLocaleModulesForLanguage(
@@ -96,6 +111,7 @@ function buildManifestContents(
   modulesByLanguage: Record<string, LocaleModuleDescriptor[]>
 ): string {
   const manifestDirectory = path.dirname(manifestPath);
+  const isTypeScriptManifest = manifestPath.endsWith(".ts");
   const importLines: string[] = [];
   const languageObjectLines: string[] = [];
 
@@ -128,14 +144,18 @@ function buildManifestContents(
     }
 
     if (importAliases.length === 0) {
-      languageObjectLines.push(`const ${languageVariableName} = {} as const;`);
+      languageObjectLines.push(
+        isTypeScriptManifest
+          ? `const ${languageVariableName} = {} as const;`
+          : `const ${languageVariableName} = {};`
+      );
       continue;
     }
 
     languageObjectLines.push(
       `const ${languageVariableName} = {`,
       ...importAliases.map((alias) => `  ...${alias},`),
-      "} as const;"
+      isTypeScriptManifest ? "} as const;" : "};"
     );
   }
 
@@ -151,12 +171,15 @@ function buildManifestContents(
       (language) =>
         `  ${JSON.stringify(language)}: ${buildLanguageVariableName(language)},`
     ),
-    "} as const;",
+    isTypeScriptManifest ? "} as const;" : "};",
+    ...(isTypeScriptManifest
+      ? ["", "export type TranslationLocale = keyof typeof translations;"]
+      : []),
     "",
-    "export type TranslationLocale = keyof typeof translations;",
-    "",
-    "export function getTranslations(locale: string) {",
-    `  return translations[locale as TranslationLocale] ?? translations[${JSON.stringify(config.sourceLocale)}];`,
+    `export function getTranslations(${isTypeScriptManifest ? "locale: string" : "locale"}) {`,
+    isTypeScriptManifest
+      ? `  return translations[locale as TranslationLocale] ?? translations[${JSON.stringify(config.sourceLocale)}];`
+      : `  return translations[locale] ?? translations[${JSON.stringify(config.sourceLocale)}];`,
     "}",
     "",
     "export default translations;",
@@ -167,11 +190,11 @@ function buildManifestContents(
 export async function refreshGeneratedTranslationManifests(
   config: ResolvedGlobalyzeConfig
 ): Promise<string[]> {
-  const manifestPaths = await findGeneratedManifestPaths(config);
-
-  if (manifestPaths.length === 0) {
-    return [];
-  }
+  const existingManifestPaths = await findGeneratedManifestPaths(config);
+  const manifestPaths =
+    existingManifestPaths.length > 0
+      ? existingManifestPaths
+      : [await resolveDefaultGeneratedManifestPath(config)];
 
   const modulesByLanguageEntries = await Promise.all(
     config.languages.map(async (language) => [

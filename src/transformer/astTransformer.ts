@@ -10,10 +10,9 @@ import type {
 } from "../types";
 import { extractDynamicTemplateFromExpression } from "../extractor/dynamicExtractor";
 import {
-  isDataDrivenTranslatablePropertyName,
-  isTranslatableObjectPropertyName,
   isTranslatableAttributeName,
-  normalizeUiText
+  normalizeUiText,
+  shouldExtractObjectProperty
 } from "../extractor/stringExtractor";
 import { GlobalyzeError } from "../utils/errors";
 import { readTextFile, writeTextFile } from "../utils/fileUtils";
@@ -150,6 +149,14 @@ export async function transformFile(
   keysByText: ReadonlyMap<string, string>,
   config: ResolvedGlobalyzeConfig
 ): Promise<FileTransformResult> {
+  if (filePath.endsWith(".json")) {
+    return {
+      filePath,
+      updated: false,
+      replacements: 0
+    };
+  }
+
   const source = await readTextFile(filePath);
   const transformed = transformSource(filePath, source, keysByText, config);
 
@@ -172,6 +179,18 @@ export function transformSource(
   updated: boolean;
   code: string;
 } {
+  if (filePath.endsWith(".json")) {
+    return {
+      updated: false,
+      code: source,
+      result: {
+        filePath,
+        updated: false,
+        replacements: 0
+      }
+    };
+  }
+
   const ast = parseModule(source, filePath);
   const adapter = resolveI18nAdapter(config);
   const state = {
@@ -381,8 +400,7 @@ export function transformSource(
 
       if (
         !propertyName ||
-        (!isTranslatableObjectPropertyName(propertyName) &&
-          !isDataDrivenTranslatablePropertyName(propertyName, filePath))
+        !shouldExtractObjectProperty(path, filePath, propertyName)
       ) {
         return;
       }

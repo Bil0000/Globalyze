@@ -138,4 +138,86 @@ describe("transformFile", () => {
     expect(updatedSource).toContain('header: t("crm.header_revenue")');
     expect(updatedSource).toContain('nextAction: t("crm.next_action_follow_up")');
   });
+
+  it("does not rewrite json files into invalid JavaScript", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-transform-"));
+    tempDirectories.push(rootDir);
+
+    const filePath = path.join(
+      rootDir,
+      "src",
+      "app",
+      "dashboard",
+      "default",
+      "_components",
+      "data.json"
+    );
+    await mkdir(path.dirname(filePath), { recursive: true });
+    const originalSource = JSON.stringify(
+      [
+        {
+          header: "Cover page",
+          status: "Ready"
+        }
+      ],
+      null,
+      2
+    );
+    await writeFile(filePath, `${originalSource}\n`);
+
+    const config = createTestConfig(rootDir);
+    const result = await transformFile(
+      filePath,
+      new Map([
+        ["Cover page", "default.data.cover_page"],
+        ["Ready", "default.data.ready"]
+      ]),
+      config
+    );
+    const updatedSource = await Bun.file(filePath).text();
+
+    expect(result.updated).toBe(false);
+    expect(updatedSource).toBe(`${originalSource}\n`);
+    expect(updatedSource).not.toContain('import { t } from "@/i18n";');
+  });
+
+  it("does not translate date formatting option literals", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-transform-"));
+    tempDirectories.push(rootDir);
+
+    const filePath = path.join(
+      rootDir,
+      "src",
+      "app",
+      "dashboard",
+      "default",
+      "_components",
+      "chart-area-interactive.tsx"
+    );
+    await mkdir(path.dirname(filePath), { recursive: true });
+    await writeFile(
+      filePath,
+      [
+        "export function Chart() {",
+        "  return new Date().toLocaleDateString(\"en-US\", {",
+        '    month: "short",',
+        '    day: "numeric"',
+        "  });",
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    const config = createTestConfig(rootDir);
+    const result = await transformFile(
+      filePath,
+      new Map([["short", "default.chart.short"]]),
+      config
+    );
+    const updatedSource = await Bun.file(filePath).text();
+
+    expect(result.updated).toBe(false);
+    expect(updatedSource).toContain('month: "short"');
+    expect(updatedSource).not.toContain('month: t("default.chart.short")');
+  });
 });

@@ -1,8 +1,9 @@
 import path from "node:path";
 
 import { createKeyAssignments, generateSemanticKeys } from "../ai/keyGenerator";
-import { extractDynamicStringsFromFiles } from "../extractor/dynamicExtractor";
-import { extractStringsFromFiles } from "../extractor/stringExtractor";
+import {
+  analyzeExtractableStringsFromFiles
+} from "../extractor/stringExtractor";
 import {
   extractTranslationKeyReferencesFromFiles,
   extractTranslationKeysFromFiles
@@ -11,7 +12,7 @@ import {
   readLocaleDictionary,
   findMissingTranslationKeys,
   syncLocaleFiles,
-  buildSourceLocale
+  buildSourceLocaleFromReferences
 } from "../i18n/localeManager";
 import { translateLocales } from "../lingo/lingoClient";
 import { scanProjectFiles } from "../scanner/projectScanner";
@@ -33,11 +34,11 @@ export async function collectProjectStrings(
   config: ResolvedGlobalyzeConfig
 ): Promise<ScanResult> {
   const files = await scanProjectFiles(config);
-  const strings = await extractStringsFromFiles(files);
-  const dynamicStrings = config.dynamicExtraction
-    ? await extractDynamicStringsFromFiles(files)
-    : [];
-  const normalizedDynamicStrings: ExtractedString[] = dynamicStrings.map((item) => ({
+  const analysis = await analyzeExtractableStringsFromFiles(files, {
+    projectRoot: config.rootDir,
+    includeDynamic: config.dynamicExtraction
+  });
+  const normalizedDynamicStrings: ExtractedString[] = analysis.dynamicStrings.map((item) => ({
     text: item.text,
     file: item.file,
     line: item.line,
@@ -53,7 +54,7 @@ export async function collectProjectStrings(
 
   return {
     files,
-    strings: [...strings, ...normalizedDynamicStrings]
+    strings: [...analysis.strings, ...normalizedDynamicStrings]
       .map((item) => ({
         ...item,
         file: toRelativePosixPath(config.rootDir, item.file)
@@ -78,11 +79,12 @@ export async function prepareTransformProject(
   config: ResolvedGlobalyzeConfig
 ): Promise<TransformPreparationResult> {
   const files = await scanProjectFiles(config);
-  const rawStrings = await extractStringsFromFiles(files);
-  const dynamicStrings = config.dynamicExtraction
-    ? await extractDynamicStringsFromFiles(files)
-    : [];
-  const normalizedDynamicStrings: ExtractedString[] = dynamicStrings.map((item) => ({
+  const analysis = await analyzeExtractableStringsFromFiles(files, {
+    projectRoot: config.rootDir,
+    includeDynamic: config.dynamicExtraction
+  });
+  const rawStrings = analysis.strings;
+  const normalizedDynamicStrings: ExtractedString[] = analysis.dynamicStrings.map((item) => ({
     text: item.text,
     file: item.file,
     line: item.line,
@@ -110,13 +112,10 @@ export async function prepareTransformProject(
           config.translationFunctionName
         )
       : [];
-  const sourceAssignments =
-    rawStrings.length === 0
-      ? await extractTranslationKeyReferencesFromFiles(
-          files,
-          config.translationFunctionName
-        )
-      : [];
+  const sourceAssignments = await extractTranslationKeyReferencesFromFiles(
+    files,
+    config.translationFunctionName
+  );
 
   if (
     rawStrings.length === 0 &&
@@ -138,6 +137,11 @@ export async function prepareTransformProject(
     keySourceStrings,
     keyResult.keysByText
   );
+  const sourceLocaleResult = buildSourceLocaleFromReferences(
+    existingSourceLocale,
+    keyAssignments,
+    sourceAssignments
+  );
 
   return {
     files,
@@ -145,10 +149,12 @@ export async function prepareTransformProject(
     keyAssignments,
     sourceAssignments:
       keyAssignments.length > 0 ? keyAssignments : sourceAssignments,
+    sourceLocale: sourceLocaleResult.locale,
     keysByText: keyResult.keysByText,
     usedFallbackKeys: keyResult.usedFallback,
     fallbackReason: keyResult.fallbackReason,
-    reusedExistingKeys: keyResult.reusedExistingKeys
+    reusedExistingKeys: keyResult.reusedExistingKeys,
+    recoveredSourceLocaleEntries: sourceLocaleResult.recoveredCount
   };
 }
 
@@ -163,7 +169,7 @@ export async function transformProject(
   );
   const localeSync = await syncLocaleFiles(
     config,
-    buildSourceLocale(prepared.keyAssignments),
+    prepared.sourceLocale,
     {
       sourceAssignments: prepared.sourceAssignments
     }
