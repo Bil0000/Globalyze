@@ -23,8 +23,15 @@ import {
   resolvePageName,
   type ResolvedFileLocalizationMetadata
 } from "../utils/nameResolver";
-
-const DATA_FILE_BASENAMES = new Set(["data.json"]);
+import {
+  hasSupportedUiCollectionContext,
+  isLikelyUiDataFile,
+  isLikelyDataDrivenPropertyName,
+  isSupportedToastCallExpressionPath,
+  resolvePropertyName,
+  shouldExtractDataDrivenProperty,
+  shouldExtractToastProperty
+} from "./extractionContexts";
 
 const TRANSLATABLE_ATTRIBUTES = new Set([
   "title",
@@ -60,21 +67,11 @@ const TRANSLATABLE_OBJECT_PROPERTIES = new Set([
   "subheading"
 ]);
 
-const DATA_DRIVEN_PROPERTY_NAMES = new Set([
-  "header",
-  "type",
-  "status",
-  "reviewer",
-  "source",
-  "account",
-  "stage",
-  "blocker",
-  "owner",
-  "nextAction",
-  "priority",
-  "month",
-  "name",
-  "company"
+const CONTEXTUAL_TRANSLATABLE_OBJECT_PROPERTIES = new Set([
+  "subtitle",
+  "text",
+  "message",
+  "copy"
 ]);
 
 interface CachedExtractedStringEntry {
@@ -110,35 +107,6 @@ interface ExtractionCacheFile {
 export interface FileExtractionAnalysis {
   strings: ExtractedString[];
   dynamicStrings: DynamicExtractionCandidate[];
-}
-
-function isLikelyUiDataFile(filePath: string): boolean {
-  const normalizedFilePath = toPosixPath(filePath).toLowerCase();
-  const baseName = path.posix.basename(normalizedFilePath);
-
-  return (
-    DATA_FILE_BASENAMES.has(baseName) ||
-    normalizedFilePath.includes("/_components/") ||
-    normalizedFilePath.includes("/components/")
-  );
-}
-
-function isEntityLabelProperty(propertyName: string): boolean {
-  return propertyName === "name" || propertyName === "company";
-}
-
-function isLikelyDataDrivenProperty(
-  propertyName: string,
-  filePath: string
-): boolean {
-  if (isEntityLabelProperty(propertyName)) {
-    return filePath.endsWith(".json") || toPosixPath(filePath).includes("/data-table/");
-  }
-
-  return (
-    DATA_DRIVEN_PROPERTY_NAMES.has(propertyName) &&
-    isLikelyUiDataFile(filePath)
-  );
 }
 
 function buildFileSignature(size: number, mtimeMs: number): string {
@@ -214,12 +182,11 @@ function mayContainExtractableStrings(
   if (
     /<[\w.-]+/.test(source) ||
     /<\/[\w.-]+>/.test(source) ||
-    /\b(title|label|description|helperText|hint|placeholder|caption|tooltip|header|status|source|reviewer|owner|account|stage|blocker|nextAction|priority|month|type)\b\s*[:=]/.test(
+    /\b(title|label|description|helperText|hint|placeholder|caption|tooltip|header|status|source|reviewer|owner|account|stage|blocker|nextAction|priority|month|type|subtitle|text|message|copy|loading|success|error)\b\s*[:=]/.test(
       source
     ) ||
-    /\b(aria-label|aria-placeholder|alt|emptyMessage|errorMessage)\b\s*=/.test(
-      source
-    )
+    /\b(aria-label|aria-placeholder|alt|emptyMessage|errorMessage)\b\s*=/.test(source) ||
+    /\btoast(?:\.\w+)?\s*\(/.test(source)
   ) {
     return true;
   }
@@ -362,29 +329,7 @@ export function isDataDrivenTranslatablePropertyName(
   propertyName: string,
   filePath: string
 ): boolean {
-  return isLikelyDataDrivenProperty(propertyName, filePath);
-}
-
-function hasArrayExpressionAncestor(path: NodePath<t.ObjectProperty>): boolean {
-  let current: NodePath | null = path.parentPath;
-
-  while (current) {
-    if (current.isArrayExpression()) {
-      return true;
-    }
-
-    if (
-      current.isCallExpression() ||
-      current.isNewExpression() ||
-      current.isJSXExpressionContainer()
-    ) {
-      return false;
-    }
-
-    current = current.parentPath;
-  }
-
-  return false;
+  return isLikelyDataDrivenPropertyName(propertyName, filePath);
 }
 
 export function shouldExtractObjectProperty(
@@ -396,29 +341,18 @@ export function shouldExtractObjectProperty(
     return true;
   }
 
-  if (!isLikelyDataDrivenProperty(propertyName, filePath)) {
-    return false;
-  }
-
-  if (filePath.endsWith(".json")) {
+  if (
+    CONTEXTUAL_TRANSLATABLE_OBJECT_PROPERTIES.has(propertyName) &&
+    (isLikelyUiDataFile(filePath) || hasSupportedUiCollectionContext(path))
+  ) {
     return true;
   }
 
-  return hasArrayExpressionAncestor(path);
-}
-
-function resolvePropertyName(
-  node: t.Identifier | t.StringLiteral | t.NumericLiteral | t.BigIntLiteral | t.Expression | t.PrivateName
-): string | null {
-  if (t.isIdentifier(node)) {
-    return node.name;
+  if (shouldExtractToastProperty(path, propertyName)) {
+    return true;
   }
 
-  if (t.isStringLiteral(node)) {
-    return node.value;
-  }
-
-  return null;
+  return shouldExtractDataDrivenProperty(path, filePath, propertyName);
 }
 
 function extractStaticTextLiteral(
@@ -617,6 +551,43 @@ export function extractStringsFromSource(
         column: location.column,
         kind: "object-property",
         propertyName,
+        componentName,
+        pageName,
+        pageNames,
+        ownershipConfidence,
+        unresolvedOwnership,
+        elementType: undefined
+      });
+    },
+    CallExpression(path) {
+      if (!isSupportedToastCallExpressionPath(path)) {
+        return;
+      }
+
+      const firstArgument = path.node.arguments[0];
+
+      if (!firstArgument || !t.isExpression(firstArgument)) {
+        return;
+      }
+
+      const text = extractStaticTextLiteral(firstArgument);
+
+      if (!text) {
+        return;
+      }
+
+      const location = getLocation(
+        firstArgument.loc?.start.line,
+        firstArgument.loc?.start.column
+      );
+
+      extracted.push({
+        text,
+        file: normalizedFilePath,
+        line: location.line,
+        column: location.column,
+        kind: "object-property",
+        propertyName: "message",
         componentName,
         pageName,
         pageNames,

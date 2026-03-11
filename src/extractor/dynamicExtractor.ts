@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { parse } from "@babel/parser";
 import generate from "@babel/generator";
-import traverse from "@babel/traverse";
+import traverse, { type NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
 
 import type { DynamicExtractionCandidate } from "../types";
@@ -14,6 +14,62 @@ import {
   resolvePageName,
   type ResolvedFileLocalizationMetadata
 } from "../utils/nameResolver";
+import {
+  hasSupportedUiCollectionContext,
+  isLikelyUiDataFile,
+  isSupportedToastCallExpressionPath,
+  resolvePropertyName,
+  shouldExtractDataDrivenProperty,
+  shouldExtractToastProperty
+} from "./extractionContexts";
+
+const TRANSLATABLE_OBJECT_PROPERTIES = new Set([
+  "title",
+  "label",
+  "description",
+  "helperText",
+  "hint",
+  "placeholder",
+  "caption",
+  "tooltip",
+  "emptyMessage",
+  "errorMessage",
+  "ariaLabel",
+  "ariaDescription",
+  "tab",
+  "heading",
+  "subheading"
+]);
+
+const CONTEXTUAL_TRANSLATABLE_OBJECT_PROPERTIES = new Set([
+  "subtitle",
+  "text",
+  "message",
+  "copy"
+]);
+
+function shouldExtractDynamicObjectProperty(
+  path: NodePath<t.ObjectProperty>,
+  filePath: string,
+  propertyName: string
+): boolean {
+  if (TRANSLATABLE_OBJECT_PROPERTIES.has(propertyName)) {
+    return true;
+  }
+
+  if (
+    CONTEXTUAL_TRANSLATABLE_OBJECT_PROPERTIES.has(propertyName) &&
+    (isLikelyUiDataFile(filePath) || hasSupportedUiCollectionContext(path))
+  ) {
+    return true;
+  }
+
+  if (shouldExtractToastProperty(path, propertyName)) {
+    return true;
+  }
+
+  return shouldExtractDataDrivenProperty(path, filePath, propertyName);
+}
 
 function parseSource(source: string, filePath: string) {
   try {
@@ -158,6 +214,74 @@ export function extractDynamicStringsFromSource(
           t.isJSXIdentifier(path.parentPath.node.openingElement.name)
             ? path.parentPath.node.openingElement.name.name
             : undefined
+      });
+    },
+    ObjectProperty(path) {
+      if (path.node.computed) {
+        return;
+      }
+
+      const propertyName = resolvePropertyName(path.node.key);
+
+      if (
+        !propertyName ||
+        !shouldExtractDynamicObjectProperty(path, filePath, propertyName) ||
+        !t.isExpression(path.node.value)
+      ) {
+        return;
+      }
+
+      const extracted = extractDynamicTemplateFromExpression(path.node.value);
+
+      if (!extracted) {
+        return;
+      }
+
+      candidates.push({
+        text: extracted.template,
+        template: extracted.template,
+        file: toPosixPath(filePath),
+        line: path.node.loc?.start.line ?? 1,
+        column: (path.node.loc?.start.column ?? 0) + 1,
+        variables: extracted.variables,
+        componentName,
+        pageName,
+        pageNames,
+        ownershipConfidence,
+        unresolvedOwnership,
+        elementType: undefined
+      });
+    },
+    CallExpression(path) {
+      if (!isSupportedToastCallExpressionPath(path)) {
+        return;
+      }
+
+      const firstArgument = path.node.arguments[0];
+
+      if (!firstArgument || !t.isExpression(firstArgument)) {
+        return;
+      }
+
+      const extracted = extractDynamicTemplateFromExpression(firstArgument);
+
+      if (!extracted) {
+        return;
+      }
+
+      candidates.push({
+        text: extracted.template,
+        template: extracted.template,
+        file: toPosixPath(filePath),
+        line: firstArgument.loc?.start.line ?? 1,
+        column: (firstArgument.loc?.start.column ?? 0) + 1,
+        variables: extracted.variables,
+        componentName,
+        pageName,
+        pageNames,
+        ownershipConfidence,
+        unresolvedOwnership,
+        elementType: undefined
       });
     }
   });

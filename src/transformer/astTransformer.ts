@@ -19,6 +19,10 @@ import {
   normalizeUiText,
   shouldExtractObjectProperty
 } from "../extractor/stringExtractor";
+import {
+  isSupportedToastCallExpressionPath,
+  resolvePropertyName as resolveContextPropertyName
+} from "../extractor/extractionContexts";
 import { GlobalyzeError } from "../utils/errors";
 import { readTextFile, writeTextFile } from "../utils/fileUtils";
 import { formatGeneratedFileContents } from "../utils/projectFormatter";
@@ -123,20 +127,6 @@ function findNearestFunctionBodyPath(
     }
 
     current = current.parentPath;
-  }
-
-  return null;
-}
-
-function resolveObjectPropertyName(
-  key: t.ObjectProperty["key"]
-): string | null {
-  if (t.isIdentifier(key)) {
-    return key.name;
-  }
-
-  if (t.isStringLiteral(key)) {
-    return key.value;
   }
 
   return null;
@@ -439,7 +429,7 @@ export function transformSource(
         return;
       }
 
-      const propertyName = resolveObjectPropertyName(path.node.key);
+      const propertyName = resolveContextPropertyName(path.node.key);
 
       if (
         !propertyName ||
@@ -454,17 +444,106 @@ export function transformSource(
           ? normalizeStaticTemplateLiteral(path.node.value)
           : null;
 
-      if (!text) {
-        return;
-      }
-
-      const key = keysByText.get(text);
+      const key = text ? keysByText.get(text) : undefined;
 
       if (!key) {
+        if (
+          !config.dynamicExtraction ||
+          !t.isExpression(path.node.value)
+        ) {
+          return;
+        }
+
+        const extracted = extractDynamicTemplateFromExpression(path.node.value);
+
+        if (!extracted) {
+          return;
+        }
+
+        const dynamicKey = keysByText.get(extracted.template);
+
+        if (!dynamicKey) {
+          return;
+        }
+
+        path.node.value = createTranslationExpression(
+          adapter,
+          dynamicKey,
+          extracted.variables
+        );
+        const bodyPath = adapter.canInjectHook
+          ? findNearestFunctionBodyPath(path)
+          : null;
+        if (bodyPath) {
+          state.hookBodies.push(bodyPath);
+        }
+        state.transformed = true;
+        state.replacements += 1;
         return;
       }
 
       path.node.value = createTranslationExpression(adapter, key);
+      const bodyPath = adapter.canInjectHook
+        ? findNearestFunctionBodyPath(path)
+        : null;
+      if (bodyPath) {
+        state.hookBodies.push(bodyPath);
+      }
+      state.transformed = true;
+      state.replacements += 1;
+    },
+    CallExpression(path) {
+      if (!isSupportedToastCallExpressionPath(path)) {
+        return;
+      }
+
+      const firstArgument = path.node.arguments[0];
+
+      if (!firstArgument || !t.isExpression(firstArgument)) {
+        return;
+      }
+
+      const text = t.isStringLiteral(firstArgument)
+        ? normalizeUiText(firstArgument.value)
+        : t.isTemplateLiteral(firstArgument)
+          ? normalizeStaticTemplateLiteral(firstArgument)
+          : null;
+      const key = text ? keysByText.get(text) : undefined;
+
+      if (key) {
+        path.node.arguments[0] = createTranslationExpression(adapter, key);
+        const bodyPath = adapter.canInjectHook
+          ? findNearestFunctionBodyPath(path)
+          : null;
+        if (bodyPath) {
+          state.hookBodies.push(bodyPath);
+        }
+        state.transformed = true;
+        state.replacements += 1;
+        return;
+      }
+
+      if (!config.dynamicExtraction) {
+        return;
+      }
+
+      const extracted = extractDynamicTemplateFromExpression(firstArgument);
+
+      if (!extracted) {
+        return;
+      }
+
+      const dynamicKey = keysByText.get(extracted.template);
+
+      if (!dynamicKey) {
+        return;
+      }
+
+      path.node.arguments[0] = createTranslationExpression(
+        adapter,
+        dynamicKey,
+        extracted.variables
+      );
       const bodyPath = adapter.canInjectHook
         ? findNearestFunctionBodyPath(path)
         : null;

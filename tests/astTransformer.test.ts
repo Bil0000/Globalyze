@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
-import { transformFile, transformFiles } from "../src/transformer/astTransformer";
+import {
+  transformFile,
+  transformFiles,
+  transformSource
+} from "../src/transformer/astTransformer";
 import { createTestConfig } from "./testUtils";
 
 describe("transformFile", () => {
@@ -288,5 +292,42 @@ describe("transformFile", () => {
     expect(result.updated).toBe(false);
     expect(updatedSource).toContain('month: "short"');
     expect(updatedSource).not.toContain('month: t("default.chart.short")');
+  });
+
+  it("rewrites toast strings and toast template states into translation calls", () => {
+    const source = [
+      'import { toast } from "sonner";',
+      "",
+      "export function Actions({ itemName }: { itemName: string }) {",
+      '  toast.success("Done");',
+      "  toast.promise(saveItem(), {",
+      '    loading: `Saving ${itemName}`,',
+      '    success: "Saved",',
+      '    error: "Error"',
+      "  });",
+      "  return null;",
+      "}",
+      ""
+    ].join("\n");
+    const config = createTestConfig("/tmp/demo", {
+      dynamicExtraction: true
+    });
+    const result = transformSource(
+      "/tmp/demo/src/app/dashboard/default/_components/actions.tsx",
+      source,
+      new Map([
+        ["Done", "toast.done"],
+        ["Saving {itemName}", "toast.saving"],
+        ["Saved", "toast.saved"],
+        ["Error", "toast.error"]
+      ]),
+      config
+    );
+
+    expect(result.updated).toBe(true);
+    expect(result.code).toContain('toast.success(t("toast.done"))');
+    expect(result.code).toContain('loading: t("toast.saving", {');
+    expect(result.code).toContain('success: t("toast.saved")');
+    expect(result.code).toContain('error: t("toast.error")');
   });
 });

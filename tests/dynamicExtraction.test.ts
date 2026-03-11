@@ -38,4 +38,27 @@ describe("dynamic extraction", () => {
 
     expect(result.code).toContain('t("activity.items_added", {');
   });
+
+  it("extracts dynamic toast and object-property templates", () => {
+    const source = [
+      "import { toast } from \"sonner\";",
+      "toast.promise(saveItem(), {",
+      '  loading: `Saving ${itemName}`,',
+      '  success: "Done",',
+      '  error: "Error"',
+      "});",
+      "toast(`Deleted ${itemName}`);",
+      ""
+    ].join("\n");
+
+    const extracted = extractDynamicStringsFromSource(
+      source,
+      "/tmp/demo/src/app/activity/actions.tsx"
+    );
+
+    expect(extracted.map((entry) => entry.template)).toEqual([
+      "Saving {itemName}",
+      "Deleted {itemName}"
+    ]);
+  });
 });

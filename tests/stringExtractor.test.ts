@@ -85,6 +85,31 @@ describe("extractStringsFromSource", () => {
     ]);
   });
 
+  it("extracts toast call strings and toast state labels", () => {
+    const source = [
+      "import { toast } from \"sonner\";",
+      "toast.success(\"Done\");",
+      "toast.promise(saveItem(), {",
+      '  loading: "Saving item",',
+      '  success: "Saved",',
+      '  error: "Error"',
+      "});",
+      ""
+    ].join("\n");
+
+    const extracted = extractStringsFromSource(
+      source,
+      "/tmp/demo/src/app/dashboard/default/_components/actions.tsx"
+    );
+
+    expect(extracted.map((entry) => entry.text)).toEqual([
+      "Done",
+      "Saving item",
+      "Saved",
+      "Error"
+    ]);
+  });
+
   it("does not extract date formatting option literals as UI strings", () => {
     const source = [
       "const formatted = new Date().toLocaleDateString(\"en-US\", {",
