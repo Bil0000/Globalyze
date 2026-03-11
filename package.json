@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "description": "A Bun-powered CLI that internationalizes React and Next.js applications automatically.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bil0000/Globalyze.git"
+  },
   "type": "module",
   "packageManager": "bun@1.2.20",
   "bin": {

@@ -18,6 +18,7 @@ import { registerScanCommand } from "../commands/scan";
 import { registerScreenshotCommand } from "../commands/screenshot";
 import { registerRenameCommand } from "../commands/rename";
 import { registerSyncCommand } from "../commands/sync";
+import { registerUpdateCommand } from "../commands/update";
 import { registerWatchCommand } from "../commands/watch";
 
 export function buildProgram(version: string): Command {
@@ -41,6 +42,7 @@ export function buildProgram(version: string): Command {
       "  analyze        Show localization diagnostics",
       "  clean          Remove unused translations",
       "  audit          Audit remaining extractable UI strings",
+      "  update         Update the globally installed CLI",
       "",
       "Maintenance:",
       "  duplicates     Detect duplicate translation keys",
@@ -80,6 +82,7 @@ export function buildProgram(version: string): Command {
   registerUnlockCommand(program);
   registerWatchCommand(program);
   registerScreenshotCommand(program);
+  registerUpdateCommand(program, version);
 
   return program;
 }

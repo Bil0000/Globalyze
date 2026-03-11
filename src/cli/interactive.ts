@@ -28,6 +28,7 @@ import { executeInspectCommand } from "../commands/inspect";
 import { executeLockCommand, executeUnlockCommand } from "../commands/lock";
 import { executeLocalesCommand } from "../commands/locales";
 import { executeOwnerCommand } from "../commands/owner";
+import { executeUpdateCommand, readCurrentCliVersion } from "../commands/update";
 import { executeWhereCommand } from "../commands/where";
 
 export async function launchInteractiveCLI(): Promise<void> {
@@ -54,7 +55,8 @@ export async function launchInteractiveCLI(): Promise<void> {
       { label: "16. Assign translation owner", value: "owner" },
       { label: "17. Lock or unlock a key", value: "locking" },
       { label: "18. Analyze screenshot", value: "screenshot" },
-      { label: "19. Exit", value: "exit" }
+      { label: "19. Update Globalyze CLI", value: "update" },
+      { label: "20. Exit", value: "exit" }
     ]
   });
 
@@ -193,6 +195,11 @@ export async function launchInteractiveCLI(): Promise<void> {
     }
 
     await executeScreenshotCommand(imagePath);
+  }
+
+  if (action === "update") {
+    const version = await readCurrentCliVersion();
+    await executeUpdateCommand(version);
   }
 
   if (action === "analyze") {

@@ -92,7 +92,38 @@ Requirements:
 
 - [Bun](https://bun.sh/) `>= 1.2.20`
 
-Clone and install:
+Recommended: install Globalyze globally from GitHub
+
+```bash
+bun add -g github:Bil0000/Globalyze
+```
+
+Then verify:
+
+```bash
+globalyze --help
+```
+
+Check for CLI updates:
+
+```bash
+globalyze update --check
+```
+
+Install the latest CLI from GitHub:
+
+```bash
+globalyze update
+```
+
+Repository URLs:
+
+- HTTPS: [https://github.com/Bil0000/Globalyze.git](https://github.com/Bil0000/Globalyze.git)
+- SSH: `git@github.com:Bil0000/Globalyze.git`
+
+Development / maintainer workflow
+
+Clone and install locally:
 
 ```bash
 git clone https://github.com/Bil0000/Globalyze.git
@@ -105,6 +136,20 @@ Run from source:
 ```bash
 bun run globalyze --help
 ```
+
+Make the CLI available globally from your local checkout:
+
+```bash
+bun link
+```
+
+After that:
+
+```bash
+globalyze --help
+```
+
+If you are developing Globalyze from a cloned repo with `bun link`, `globalyze update` will detect that linked setup and tell you to update the repo directly instead of replacing the linked CLI with the GitHub package.
 
 Install the AI skill from this repo:
 
@@ -119,29 +164,6 @@ npx skills add Bil0000/Globalyze --path skills/globalyze
 ```
 
 The skill lives at [skills/globalyze/SKILL.md](/Users/bilal/Documents/globalyze/skills/globalyze/SKILL.md) and is designed for agent tools such as Cursor, Codex, or Claude-style workflows that should drive the `globalyze` CLI for a target project.
-
-Make the CLI available globally from your local checkout:
-
-```bash
-bun link
-```
-
-After that:
-
-```bash
-globalyze --help
-```
-
-Install directly from GitHub:
-
-```bash
-bun add -g github:Bil0000/Globalyze
-```
-
-Repository URLs:
-
-- HTTPS: [https://github.com/Bil0000/Globalyze.git](https://github.com/Bil0000/Globalyze.git)
-- SSH: `git@github.com:Bil0000/Globalyze.git`
 
 ## Quick Start
 
@@ -223,7 +245,18 @@ Behavior when keys are missing:
 
 Launches the interactive menu.
 
+Globalyze also checks periodically for newer CLI releases and prints a lightweight notice when an update is available.
+
 ### Primary Commands
+
+### `globalyze update`
+
+Checks for a newer Globalyze CLI version and installs it globally from GitHub.
+
+Options:
+
+- `--check` only checks whether a newer CLI version is available
+- `--source <source>` overrides the install source, for example `github:Bil0000/Globalyze#main`
 
 ### `globalyze globalize`
 
