@@ -70,7 +70,7 @@ describe("sync-related commands", () => {
     expect(english).toContain("Checkout");
     expect(runtimeModule).toContain('import { getTranslations } from "./lib/i18n/translations.generated"');
     expect(runtimeModule).toContain("const template = activeTranslations[key] ?? fallbackTranslations[key] ?? key;");
-    expect(manifest).toContain('"en": locale_en,');
+    expect(manifest).toContain("en: locale_en,");
   });
 
   it("scaffolds a runtime module that matches the generated translations manifest contract", async () => {

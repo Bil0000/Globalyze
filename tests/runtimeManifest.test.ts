@@ -102,8 +102,8 @@ describe("generated translation manifest refresh", () => {
     expect(manifest).toContain('import { common as ar_common } from "../../../locales/ar/common.js";');
     expect(manifest).toContain('export const translations = {');
     expect(manifest).toContain("export function getTranslations(locale: string)");
-    expect(manifest).toContain('"en": locale_en,');
-    expect(manifest).toContain('"ar": locale_ar,');
+    expect(manifest).toContain("en: locale_en,");
+    expect(manifest).toContain("ar: locale_ar,");
   });
 
   it("updates generated manifest imports after changing locale style", async () => {
@@ -206,6 +206,55 @@ describe("generated translation manifest refresh", () => {
     expect(manifest).toContain('import { homePage as en_home_page } from "../../../locales/en/homePage";');
     expect(manifest).toContain('import { homePage as ar_home_page } from "../../../locales/ar/homePage";');
     expect(manifest).toContain('} as const;');
+  });
+
+  it("falls back to an empty module object when a translated locale bucket is missing", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-runtime-manifest-missing-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      languages: ["en", "fr"],
+      localeStructure: {
+        format: "js",
+        structure: "multiple",
+        splitStrategy: "page",
+        commonFile: true,
+        naming: "camel",
+        unresolvedOwnership: "common"
+      }
+    });
+
+    await mkdir(path.join(rootDir, "src", "lib", "i18n"), { recursive: true });
+    await mkdir(path.join(rootDir, "locales", "en"), { recursive: true });
+    await mkdir(path.join(rootDir, "locales", "fr"), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "src", "lib", "i18n", "translations.generated.ts"),
+      "// placeholder\n"
+    );
+    await writeFile(
+      path.join(rootDir, "locales", "en", "homePage.js"),
+      'export const homePage = {"home.title":"Home"};\n'
+    );
+    await writeFile(
+      path.join(rootDir, "locales", "en", "dashboardPage.js"),
+      'export const dashboardPage = {"dashboard.title":"Dashboard"};\n'
+    );
+    await writeFile(
+      path.join(rootDir, "locales", "fr", "homePage.js"),
+      'export const homePage = {"home.title":"Accueil"};\n'
+    );
+
+    await refreshGeneratedTranslationManifests(config);
+    const manifest = await readFile(
+      path.join(rootDir, "src", "lib", "i18n", "translations.generated.ts"),
+      "utf8"
+    );
+
+    expect(manifest).toContain(
+      'import { dashboardPage as en_dashboard_page } from "../../../locales/en/dashboardPage.js";'
+    );
+    expect(manifest).not.toContain("../../../locales/fr/dashboardPage.js");
+    expect(manifest).toContain("const fr_dashboard_page = {} as const;");
   });
 
   it("creates a generated manifest at the default runtime location when none exists yet", async () => {

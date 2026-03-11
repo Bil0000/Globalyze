@@ -1,7 +1,7 @@
 import { Command } from "commander";
 
 import { ensureLocalAdapterRuntime } from "../adapters/scaffold";
-import { prepareTransformProject } from "../cli/pipeline";
+import { collectProjectStrings, prepareTransformProject } from "../cli/pipeline";
 import { extractTranslationKeyReferencesFromFiles } from "../extractor/translationKeyExtractor";
 import { updateTranslationGraph } from "../graph/translationGraph";
 import {
@@ -142,6 +142,7 @@ export async function executeSyncCommand(
     sourceDir?: string;
     localesDir?: string;
     suppressAliasWarning?: boolean;
+    skipCoverageAudit?: boolean;
   } = {}
 ) {
   const config = await logger.step(
@@ -256,6 +257,22 @@ export async function executeSyncCommand(
         ? `${result.action === "created" ? "Created" : "Updated"} translation runtime scaffold at ${result.path}`
         : "Translation runtime module is already aligned"
   );
+  if (!options.skipCoverageAudit) {
+    const audit = await logger.step(
+      "Reviewing extraction coverage",
+      () => collectProjectStrings(config),
+      (scanResult) =>
+        `Found ${String(scanResult.strings.length)} remaining extractable UI strings across ${String(scanResult.files.length)} files`
+    );
+
+    if (audit.strings.length > 0) {
+      logger.warn(
+        `Post-sync audit found ${String(audit.strings.length)} remaining extractable UI strings. Run \`globalyze audit\` to review the remaining misses.`
+      );
+    } else {
+      logger.success("Post-sync audit found no remaining extractable UI strings.");
+    }
+  }
 
   if (translation.usedMockTranslations) {
     logger.warn(

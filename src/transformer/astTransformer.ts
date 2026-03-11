@@ -21,6 +21,7 @@ import {
 } from "../extractor/stringExtractor";
 import { GlobalyzeError } from "../utils/errors";
 import { readTextFile, writeTextFile } from "../utils/fileUtils";
+import { formatGeneratedFileContents } from "../utils/projectFormatter";
 
 function parseModule(source: string, filePath: string) {
   try {
@@ -176,7 +177,10 @@ export async function transformFile(
     return transformed.result;
   }
 
-  await writeTextFile(filePath, `${transformed.code}\n`);
+  await writeTextFile(
+    filePath,
+    await formatGeneratedFileContents(filePath, `${transformed.code}\n`)
+  );
 
   return transformed.result;
 }
@@ -705,7 +709,10 @@ async function buildJsonSidecarMap(
           minimal: true
         }
       }).code}\n`;
-      await writeTextFile(sidecarFilePath, contents);
+      await writeTextFile(
+        sidecarFilePath,
+        await formatGeneratedFileContents(sidecarFilePath, contents)
+      );
       sidecarImports.set(filePath, sidecarFilePath);
       continue;
     }

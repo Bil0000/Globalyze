@@ -11,6 +11,10 @@ import { extractDynamicStringsFromSource } from "./dynamicExtractor";
 import type { DynamicExtractionCandidate } from "../types";
 import { ensureGlobalyzeState } from "../state/globalyzeState";
 import type { ExtractedString } from "../types";
+import {
+  getResourceFriendlyConcurrency,
+  mapWithConcurrency
+} from "../utils/async";
 import { GlobalyzeError } from "../utils/errors";
 import { toPosixPath } from "../utils/fileUtils";
 import {
@@ -651,61 +655,83 @@ export async function analyzeExtractableStringsFromFiles(
   let cacheDirty = false;
   const strings: ExtractedString[] = [];
   const dynamicStrings: DynamicExtractionCandidate[] = [];
+  const analyzedFiles = await mapWithConcurrency(
+    filePaths,
+    getResourceFriendlyConcurrency("cpu"),
+    async (filePath) => {
+      const resolvedFilePath = path.resolve(filePath);
 
-  for (const filePath of filePaths) {
-    const resolvedFilePath = path.resolve(filePath);
-
-    if (
-      resolvedFilePath.endsWith(".json") &&
-      (await hasGeneratedJsonSidecar(resolvedFilePath))
-    ) {
-      continue;
-    }
-
-    const posixFilePath = toPosixPath(resolvedFilePath);
-    const relativeFilePath = options.projectRoot
-      ? toPosixPath(path.relative(options.projectRoot, resolvedFilePath))
-      : posixFilePath;
-    const metadata = metadataMap.get(posixFilePath);
-    const fileStats = await stat(resolvedFilePath);
-    const signature = buildFileSignature(fileStats.size, fileStats.mtimeMs);
-    const cached = cache.files[relativeFilePath];
-
-    if (cached?.signature === signature) {
-      strings.push(
-        ...cached.strings.map((item) =>
-          applyMetadataToExtractedString(item, resolvedFilePath, metadata)
-        )
-      );
-      if (includeDynamic) {
-        dynamicStrings.push(
-          ...cached.dynamicStrings.map((item) =>
-            applyMetadataToDynamicString(item, resolvedFilePath, metadata)
-          )
-        );
+      if (
+        resolvedFilePath.endsWith(".json") &&
+        (await hasGeneratedJsonSidecar(resolvedFilePath))
+      ) {
+        return null;
       }
+
+      const posixFilePath = toPosixPath(resolvedFilePath);
+      const relativeFilePath = options.projectRoot
+        ? toPosixPath(path.relative(options.projectRoot, resolvedFilePath))
+        : posixFilePath;
+      const metadata = metadataMap.get(posixFilePath);
+      const fileStats = await stat(resolvedFilePath);
+      const signature = buildFileSignature(fileStats.size, fileStats.mtimeMs);
+      const cached = cache.files[relativeFilePath];
+
+      if (cached?.signature === signature) {
+        return {
+          relativeFilePath,
+          signature,
+          strings: cached.strings.map((item) =>
+            applyMetadataToExtractedString(item, resolvedFilePath, metadata)
+          ),
+          dynamicStrings: includeDynamic
+            ? cached.dynamicStrings.map((item) =>
+                applyMetadataToDynamicString(item, resolvedFilePath, metadata)
+              )
+            : [],
+          cacheEntry: cached,
+          cacheUpdated: false
+        };
+      }
+
+      const source = await Bun.file(resolvedFilePath).text();
+      let extractedStrings: ExtractedString[] = [];
+      let extractedDynamicStrings: DynamicExtractionCandidate[] = [];
+
+      if (mayContainExtractableStrings(source, resolvedFilePath, includeDynamic)) {
+        extractedStrings = extractStringsFromSource(source, resolvedFilePath, metadata);
+        extractedDynamicStrings = includeDynamic
+          ? extractDynamicStringsFromSource(source, resolvedFilePath, metadata)
+          : [];
+      }
+
+      return {
+        relativeFilePath,
+        signature,
+        strings: extractedStrings,
+        dynamicStrings: extractedDynamicStrings,
+        cacheEntry: {
+          signature,
+          strings: toCachedStringEntries(extractedStrings),
+          dynamicStrings: toCachedDynamicEntries(extractedDynamicStrings)
+        },
+        cacheUpdated: true
+      };
+    }
+  );
+
+  for (const analyzedFile of analyzedFiles) {
+    if (!analyzedFile) {
       continue;
     }
 
-    const source = await Bun.file(resolvedFilePath).text();
-    let extractedStrings: ExtractedString[] = [];
-    let extractedDynamicStrings: DynamicExtractionCandidate[] = [];
+    strings.push(...analyzedFile.strings);
+    dynamicStrings.push(...analyzedFile.dynamicStrings);
 
-    if (mayContainExtractableStrings(source, resolvedFilePath, includeDynamic)) {
-      extractedStrings = extractStringsFromSource(source, resolvedFilePath, metadata);
-      extractedDynamicStrings = includeDynamic
-        ? extractDynamicStringsFromSource(source, resolvedFilePath, metadata)
-        : [];
+    if (analyzedFile.cacheUpdated) {
+      cache.files[analyzedFile.relativeFilePath] = analyzedFile.cacheEntry;
+      cacheDirty = true;
     }
-
-    strings.push(...extractedStrings);
-    dynamicStrings.push(...extractedDynamicStrings);
-    cache.files[relativeFilePath] = {
-      signature,
-      strings: toCachedStringEntries(extractedStrings),
-      dynamicStrings: toCachedDynamicEntries(extractedDynamicStrings)
-    };
-    cacheDirty = true;
   }
 
   if (cacheDirty) {

@@ -61,7 +61,22 @@ export async function detectFramework(rootDir: string): Promise<DetectedFramewor
 
   if (
     hasTanStackStart &&
-    (await hasAnyPath(rootDir, [path.join("src", "routes"), "routes"]))
+    (await hasAnyPath(rootDir, [
+      path.join("src", "routes"),
+      "routes",
+      path.join("src", "routes", "__root.tsx"),
+      path.join("src", "routes", "__root.jsx"),
+      path.join("src", "routes", "__root.ts"),
+      path.join("src", "routes", "__root.js"),
+      path.join("routes", "__root.tsx"),
+      path.join("routes", "__root.jsx"),
+      path.join("routes", "__root.ts"),
+      path.join("routes", "__root.js"),
+      path.join("src", "app", "__root.tsx"),
+      path.join("src", "app", "__root.jsx"),
+      path.join("app", "__root.tsx"),
+      path.join("app", "__root.jsx")
+    ]))
   ) {
     return "tanstack-start";
   }

@@ -5,6 +5,10 @@ import traverse from "@babel/traverse";
 import * as t from "@babel/types";
 
 import type { LocaleKeyReference } from "../types";
+import {
+  getResourceFriendlyConcurrency,
+  mapWithConcurrency
+} from "../utils/async";
 import { GlobalyzeError } from "../utils/errors";
 import {
   buildFileLocalizationMetadata,
@@ -68,15 +72,17 @@ export async function extractTranslationKeysFromFiles(
   filePaths: readonly string[],
   translationFunctionName: string
 ): Promise<string[]> {
-  const extracted = await Promise.all(
-    filePaths.map(async (filePath) => {
+  const extracted = await mapWithConcurrency(
+    filePaths,
+    getResourceFriendlyConcurrency("io"),
+    async (filePath) => {
       const source = await Bun.file(filePath).text();
       return extractTranslationKeysFromSource(
         source,
         filePath,
         translationFunctionName
       );
-    })
+    }
   );
 
   return [...new Set(extracted.flat())].sort((left, right) =>
@@ -132,8 +138,10 @@ export async function extractTranslationKeyReferencesFromFiles(
   translationFunctionName: string
 ): Promise<LocaleKeyReference[]> {
   const metadataMap = await buildFileLocalizationMetadata(filePaths);
-  const extracted = await Promise.all(
-    filePaths.map(async (filePath) => {
+  const extracted = await mapWithConcurrency(
+    filePaths,
+    getResourceFriendlyConcurrency("io"),
+    async (filePath) => {
       const source = await Bun.file(filePath).text();
       return extractTranslationKeyReferencesFromSource(
         source,
@@ -141,7 +149,7 @@ export async function extractTranslationKeyReferencesFromFiles(
         translationFunctionName,
         metadataMap.get(toPosixPath(path.resolve(filePath)))
       );
-    })
+    }
   );
 
   return extracted

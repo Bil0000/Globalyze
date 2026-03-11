@@ -9,6 +9,10 @@ import type {
   ResolvedGlobalyzeConfig,
   TranslationResult
 } from "../types";
+import {
+  getResourceFriendlyConcurrency,
+  mapWithConcurrency
+} from "../utils/async";
 import { GlobalyzeError } from "../utils/errors";
 import {
   ensureLocaleCoverageReady,
@@ -116,75 +120,101 @@ export async function translateLocales(
   let cacheHits = 0;
   let cacheWrites = 0;
 
-  for (const language of targetLanguages) {
-    try {
-      const existingLocale = await readLocaleDictionary(config, language);
-      const cached = config.cacheTranslations
-        ? await getCachedTranslations(sourceLocale, language, config.rootDir)
-        : { translations: {}, hits: 0 };
-      cacheHits += cached.hits;
-      const reusableTranslations = Object.fromEntries(
-        Object.entries(sourceLocale).flatMap(([key]) => {
-          const existingValue = existingLocale[key];
+  const translationRuns = await mapWithConcurrency(
+    targetLanguages,
+    getResourceFriendlyConcurrency("network"),
+    async (language) => {
+      try {
+        const existingLocale = await readLocaleDictionary(config, language);
+        const cached = config.cacheTranslations
+          ? await getCachedTranslations(sourceLocale, language, config.rootDir)
+          : { translations: {}, hits: 0 };
+        const reusableTranslations = Object.fromEntries(
+          Object.entries(sourceLocale).flatMap(([key]) => {
+            const existingValue = existingLocale[key];
 
-          return typeof existingValue === "string" && existingValue.trim().length > 0
-            ? [[key, existingValue] as const]
-            : [];
-        })
-      );
-      const pendingSourceLocale = Object.fromEntries(
-        Object.entries(sourceLocale).filter(
-          ([key]) =>
-            typeof cached.translations[key] !== "string" &&
-            typeof reusableTranslations[key] !== "string"
-        )
-      );
-      const translated =
-        Object.keys(pendingSourceLocale).length > 0
-          ? await engine.localizeObject(pendingSourceLocale, {
-              sourceLocale: config.sourceLocale,
-              targetLocale: language,
-              ...(hints
-                ? {
-                    hints: Object.fromEntries(
-                      Object.entries(hints).filter(([key]) => key in pendingSourceLocale)
-                    )
-                  }
-                : {})
-            })
-          : {};
-      const mergedTranslatedLocale = {
-        ...reusableTranslations,
-        ...cached.translations,
-        ...coerceTranslatedLocale(translated, pendingSourceLocale)
-      };
-
-      await writeLocaleDictionary(
-        config,
-        language,
-        coerceTranslatedLocale(mergedTranslatedLocale, sourceLocale),
-        sourceAssignments
-      );
-      if (config.cacheTranslations) {
-        cacheWrites += await storeCachedTranslations(
-          sourceLocale,
-          language,
-          coerceTranslatedLocale(mergedTranslatedLocale, sourceLocale),
-          config.rootDir
+            return typeof existingValue === "string" && existingValue.trim().length > 0
+              ? [[key, existingValue] as const]
+              : [];
+          })
         );
+        const pendingSourceLocale = Object.fromEntries(
+          Object.entries(sourceLocale).filter(
+            ([key]) =>
+              typeof cached.translations[key] !== "string" &&
+              typeof reusableTranslations[key] !== "string"
+          )
+        );
+        const translated =
+          Object.keys(pendingSourceLocale).length > 0
+            ? await engine.localizeObject(pendingSourceLocale, {
+                sourceLocale: config.sourceLocale,
+                targetLocale: language,
+                ...(hints
+                  ? {
+                      hints: Object.fromEntries(
+                        Object.entries(hints).filter(([key]) => key in pendingSourceLocale)
+                      )
+                    }
+                  : {})
+              })
+            : {};
+        const mergedTranslatedLocale = {
+          ...reusableTranslations,
+          ...cached.translations,
+          ...coerceTranslatedLocale(translated, pendingSourceLocale)
+        };
+        const finalizedLocale = coerceTranslatedLocale(
+          mergedTranslatedLocale,
+          sourceLocale
+        );
+
+        await writeLocaleDictionary(
+          config,
+          language,
+          finalizedLocale,
+          sourceAssignments
+        );
+
+        const writes = config.cacheTranslations
+          ? await storeCachedTranslations(
+              sourceLocale,
+              language,
+              finalizedLocale,
+              config.rootDir
+            )
+          : 0;
+
+        return {
+          language,
+          cacheHits: cached.hits,
+          cacheWrites: writes
+        };
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : "Unknown translation failure";
+        await writeLocaleDictionary(
+          config,
+          language,
+          sourceLocale,
+          sourceAssignments
+        );
+
+        return {
+          language,
+          cacheHits: 0,
+          cacheWrites: 0,
+          fallbackWarning: `Lingo.dev translation failed for ${language}: ${reason}. English source values were copied instead.`
+        };
       }
-    } catch (error) {
-      const reason =
-        error instanceof Error ? error.message : "Unknown translation failure";
-      fallbackWarnings.push(
-        `Lingo.dev translation failed for ${language}: ${reason}. English source values were copied instead.`
-      );
-      await writeLocaleDictionary(
-        config,
-        language,
-        sourceLocale,
-        sourceAssignments
-      );
+    }
+  );
+
+  for (const run of translationRuns) {
+    cacheHits += run.cacheHits;
+    cacheWrites += run.cacheWrites;
+    if (run.fallbackWarning) {
+      fallbackWarnings.push(run.fallbackWarning);
     }
   }
 

@@ -137,7 +137,10 @@ export async function executeGlobalizeCommand(
     "Runtime integration prepared"
   );
 
-  const result = await executeSyncCommand(options);
+  const result = await executeSyncCommand({
+    ...options,
+    skipCoverageAudit: true
+  });
   const audit = await logger.step(
     "Reviewing extraction coverage",
     () => collectProjectStrings(config),

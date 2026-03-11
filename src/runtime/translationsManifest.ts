@@ -7,10 +7,16 @@ import { buildJsLocaleExportName } from "../i18n/writers/shared";
 import { detectRuntimeArtifactFlavor } from "./languageArtifacts";
 import type { ResolvedGlobalyzeConfig } from "../types";
 import { toPosixPath, writeTextFile } from "../utils/fileUtils";
+import { formatGeneratedFileContents } from "../utils/projectFormatter";
 
 interface LocaleModuleDescriptor {
   fileName: string;
   filePath: string;
+}
+
+interface CanonicalLocaleModuleDescriptor {
+  fileName: string;
+  modulesByLanguage: Record<string, LocaleModuleDescriptor | undefined>;
 }
 
 function buildImportAlias(language: string, fileName: string): string {
@@ -115,19 +121,52 @@ function buildManifestContents(
   const importLines: string[] = [];
   const languageObjectLines: string[] = [];
 
+  const canonicalFileNames = [
+    ...new Set(
+      [
+        ...(modulesByLanguage[config.sourceLocale] ?? []),
+        ...Object.values(modulesByLanguage).flat()
+      ].map((module) => module.fileName)
+    )
+  ].sort((left, right) => left.localeCompare(right));
+
+  const canonicalModules: CanonicalLocaleModuleDescriptor[] = canonicalFileNames.map(
+    (fileName) => ({
+      fileName,
+      modulesByLanguage: Object.fromEntries(
+        config.languages.map((language) => [
+          language,
+          (modulesByLanguage[language] ?? []).find(
+            (module) => module.fileName === fileName
+          )
+        ])
+      ) as Record<string, LocaleModuleDescriptor | undefined>
+    })
+  );
+
   for (const language of config.languages) {
-    const languageModules = modulesByLanguage[language] ?? [];
     const importAliases: string[] = [];
     const languageVariableName = buildLanguageVariableName(language);
 
-    for (const module of languageModules) {
+    for (const moduleDescriptor of canonicalModules) {
+      const module = moduleDescriptor.modulesByLanguage[language];
+      const importAlias = buildImportAlias(language, moduleDescriptor.fileName);
+      importAliases.push(importAlias);
+
+      if (!module) {
+        languageObjectLines.push(
+          isTypeScriptManifest
+            ? `const ${importAlias} = {} as const;`
+            : `const ${importAlias} = {};`
+        );
+        continue;
+      }
+
       const relativeImportPath = buildManifestImportPath(
         manifestDirectory,
         module.filePath,
         config.localeStructure.format
       );
-      const importAlias = buildImportAlias(language, module.fileName);
-      importAliases.push(importAlias);
 
       if (
         config.localeStructure.format === "js" ||
@@ -210,7 +249,10 @@ export async function refreshGeneratedTranslationManifests(
   await Promise.all(
     manifestPaths.map(async (manifestPath) => {
       const contents = buildManifestContents(manifestPath, config, modulesByLanguage);
-      await writeTextFile(manifestPath, contents);
+      await writeTextFile(
+        manifestPath,
+        await formatGeneratedFileContents(manifestPath, contents)
+      );
     })
   );
 

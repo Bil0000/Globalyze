@@ -6,6 +6,7 @@ import fg from "fast-glob";
 import { resolveI18nAdapter } from "../adapters";
 import type { ResolvedGlobalyzeConfig } from "../types";
 import { pathExists, readTextFile, writeTextFile } from "../utils/fileUtils";
+import { formatGeneratedFileContents } from "../utils/projectFormatter";
 
 const DEFAULT_LANGUAGE_LABELS: Record<string, string> = {
   en: "English",
@@ -268,11 +269,7 @@ function buildLocaleHookContents(
       "    return initialLocale;",
       "  }",
       "",
-      "  if (typeof window === \"undefined\") {",
-      "    return DEFAULT_LOCALE;",
-      "  }",
-      "",
-      "  return readCookieLocale() ?? window.localStorage.getItem(STORAGE_KEY) ?? DEFAULT_LOCALE;",
+      "  return DEFAULT_LOCALE;",
       "}",
       "",
       "function persistLocale(nextLocale) {",
@@ -292,8 +289,10 @@ function buildLocaleHookContents(
       "      return undefined;",
       "    }",
       "",
+      "    setLocaleState(readCookieLocale() ?? window.localStorage.getItem(STORAGE_KEY) ?? readStoredLocale(initialLocale));",
+      "",
       "    const handleStorage = () => {",
-      "      setLocaleState(readStoredLocale(initialLocale));",
+      "      setLocaleState(readCookieLocale() ?? window.localStorage.getItem(STORAGE_KEY) ?? readStoredLocale(initialLocale));",
       "    };",
       "",
       '    window.addEventListener("storage", handleStorage);',
@@ -364,16 +363,12 @@ function buildLocaleHookContents(
     "  return match ? decodeURIComponent(match.slice(COOKIE_KEY.length + 1)) : null;",
     "}",
     "",
-    "function readStoredLocale(initialLocale?: string): string {",
-    "  if (typeof initialLocale === \"string\" && initialLocale.trim().length > 0) {",
-    "    return initialLocale;",
-    "  }",
-    "",
-    "  if (typeof window === \"undefined\") {",
-    "    return DEFAULT_LOCALE;",
-    "  }",
-    "",
-    "  return readCookieLocale() ?? window.localStorage.getItem(STORAGE_KEY) ?? DEFAULT_LOCALE;",
+      "function readStoredLocale(initialLocale?: string): string {",
+      "  if (typeof initialLocale === \"string\" && initialLocale.trim().length > 0) {",
+      "    return initialLocale;",
+      "  }",
+      "",
+      "  return DEFAULT_LOCALE;",
     "}",
     "",
     "function persistLocale(nextLocale: string): void {",
@@ -395,8 +390,10 @@ function buildLocaleHookContents(
     "      return undefined;",
     "    }",
     "",
+    "    setLocaleState(readCookieLocale() ?? window.localStorage.getItem(STORAGE_KEY) ?? readStoredLocale(initialLocale));",
+    "",
     "    const handleStorage = () => {",
-    "      setLocaleState(readStoredLocale(initialLocale));",
+    "      setLocaleState(readCookieLocale() ?? window.localStorage.getItem(STORAGE_KEY) ?? readStoredLocale(initialLocale));",
     "    };",
     "",
     '    window.addEventListener("storage", handleStorage);',
@@ -527,8 +524,10 @@ async function writeGeneratedArtifact(
   contents: string,
   validator: (contents: string) => boolean
 ): Promise<"created" | "updated" | "skipped"> {
+  const formattedContents = await formatGeneratedFileContents(filePath, contents);
+
   if (!(await pathExists(filePath))) {
-    await writeTextFile(filePath, contents);
+    await writeTextFile(filePath, formattedContents);
     return "created";
   }
 
@@ -538,11 +537,14 @@ async function writeGeneratedArtifact(
     return "skipped";
   }
 
-  if (existingContents === contents || existingContents === `${contents}\n`) {
+  if (
+    existingContents === formattedContents ||
+    existingContents === `${formattedContents}\n`
+  ) {
     return "skipped";
   }
 
-  await writeTextFile(filePath, contents);
+  await writeTextFile(filePath, formattedContents);
   return "updated";
 }
 

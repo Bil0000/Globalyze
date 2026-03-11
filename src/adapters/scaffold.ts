@@ -4,6 +4,7 @@ import fg from "fast-glob";
 import { detectRuntimeArtifactFlavor } from "../runtime/languageArtifacts";
 import type { ResolvedGlobalyzeConfig } from "../types";
 import { pathExists, readTextFile, writeTextFile } from "../utils/fileUtils";
+import { formatGeneratedFileContents } from "../utils/projectFormatter";
 
 export interface LocalAdapterRuntimeResult {
   path: string;
@@ -186,6 +187,10 @@ export async function ensureLocalAdapterRuntime(
         `  return ${JSON.stringify(config.sourceLocale)};`,
         "}",
         "",
+        "export function getCurrentLocale(locale?: string): string {",
+        "  return resolveRuntimeLocale(locale);",
+        "}",
+        "",
         `export function ${functionName}(`,
         "  key: string,",
         "  values?: TranslationValues,",
@@ -214,6 +219,7 @@ export async function ensureLocalAdapterRuntime(
         "}",
         ""
       ].join("\n");
+  const formattedContents = await formatGeneratedFileContents(runtimePath, contents);
 
   if (await pathExists(runtimePath)) {
     const existingContents = await readTextFile(runtimePath);
@@ -222,18 +228,21 @@ export async function ensureLocalAdapterRuntime(
       return null;
     }
 
-    if (existingContents === `${contents}\n` || existingContents === contents) {
+    if (
+      existingContents === `${formattedContents}\n` ||
+      existingContents === formattedContents
+    ) {
       return null;
     }
 
-    await writeTextFile(runtimePath, contents);
+    await writeTextFile(runtimePath, formattedContents);
     return {
       path: runtimePath,
       action: "updated"
     };
   }
 
-  await writeTextFile(runtimePath, contents);
+  await writeTextFile(runtimePath, formattedContents);
   return {
     path: runtimePath,
     action: "created"

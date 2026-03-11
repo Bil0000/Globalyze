@@ -14,6 +14,7 @@ import type {
 import { GlobalyzeError } from "../utils/errors";
 import { detectFramework } from "../utils/frameworkDetection";
 import { pathExists, readTextFile, writeTextFile } from "../utils/fileUtils";
+import { formatGeneratedFileContents } from "../utils/projectFormatter";
 import { ensureLanguageArtifacts } from "./languageArtifacts";
 
 interface RuntimeEntryCandidate {
@@ -142,6 +143,7 @@ function buildWrappedApplication(
     adapterName: string;
     providerComponentName?: string;
     wrapWithLocaleProvider: boolean;
+    includeInitialLocale?: boolean;
   }
 ): t.JSXElement | t.JSXFragment {
   let wrapped: t.JSXElement | t.JSXFragment | t.JSXExpressionContainer = child;
@@ -160,7 +162,16 @@ function buildWrappedApplication(
     wrapped = t.jsxElement(
       t.jsxOpeningElement(
         t.jsxIdentifier("GlobalyzeLocaleProvider"),
-        [],
+        options.includeInitialLocale
+          ? [
+              t.jsxAttribute(
+                t.jsxIdentifier("initialLocale"),
+                t.jsxExpressionContainer(
+                  t.callExpression(t.identifier("getCurrentLocale"), [])
+                )
+              )
+            ]
+          : [],
         false
       ),
       t.jsxClosingElement(t.jsxIdentifier("GlobalyzeLocaleProvider")),
@@ -277,10 +288,41 @@ async function detectRuntimeEntry(
   framework: DetectedFramework
 ): Promise<RuntimeEntryCandidate | null> {
   const candidates: Record<DetectedFramework, string[]> = {
-    "next-app-router": ["app/layout.tsx", "src/app/layout.tsx"],
-    "next-pages-router": ["pages/_app.tsx", "src/pages/_app.tsx"],
-    "tanstack-start": ["src/routes/__root.tsx", "routes/__root.tsx"],
-    remix: ["app/root.tsx", "app/root.jsx"],
+    "next-app-router": [
+      "app/layout.tsx",
+      "app/layout.jsx",
+      "app/layout.ts",
+      "app/layout.js",
+      "src/app/layout.tsx",
+      "src/app/layout.jsx",
+      "src/app/layout.ts",
+      "src/app/layout.js"
+    ],
+    "next-pages-router": [
+      "pages/_app.tsx",
+      "pages/_app.jsx",
+      "pages/_app.ts",
+      "pages/_app.js",
+      "src/pages/_app.tsx",
+      "src/pages/_app.jsx",
+      "src/pages/_app.ts",
+      "src/pages/_app.js"
+    ],
+    "tanstack-start": [
+      "src/routes/__root.tsx",
+      "src/routes/__root.jsx",
+      "src/routes/__root.ts",
+      "src/routes/__root.js",
+      "routes/__root.tsx",
+      "routes/__root.jsx",
+      "routes/__root.ts",
+      "routes/__root.js",
+      "src/app/__root.tsx",
+      "src/app/__root.jsx",
+      "app/__root.tsx",
+      "app/__root.jsx"
+    ],
+    remix: ["app/root.tsx", "app/root.jsx", "app/root.ts", "app/root.js"],
     "react-router": [
       "src/main.tsx",
       "src/main.jsx",
@@ -440,6 +482,7 @@ async function wireComponentReturnFile(
     providerComponentName?: string;
     localeHookImportPath: string;
     switcherImportPath: string;
+    runtimeImportPath?: string;
     requiredComponentNames: string[];
   }
 ): Promise<{ updated: boolean; devSwitcherInjected: boolean }> {
@@ -482,7 +525,9 @@ async function wireComponentReturnFile(
           {
             adapterName: options.adapterName,
             providerComponentName: options.providerComponentName,
-            wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
+            wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName),
+            includeInitialLocale:
+              options.adapterName === "generic" || options.adapterName === "custom"
           }
         )
       ];
@@ -508,11 +553,17 @@ async function wireComponentReturnFile(
   if (requiresGeneratedLocaleProvider(options.adapterName)) {
     ensureImport(ast, options.localeHookImportPath, "GlobalyzeLocaleProvider");
   }
+  if (options.runtimeImportPath) {
+    ensureImport(ast, options.runtimeImportPath, "getCurrentLocale");
+  }
 
   ensureImport(ast, options.switcherImportPath, "GlobalyzeLanguageSwitcher");
 
   const output = generate(ast, { retainLines: true }, source);
-  await writeTextFile(filePath, `${output.code}\n`);
+  await writeTextFile(
+    filePath,
+    await formatGeneratedFileContents(filePath, `${output.code}\n`)
+  );
   return { updated, devSwitcherInjected };
 }
 
@@ -524,6 +575,7 @@ async function wireNextAppRouterLayout(
     providerComponentName?: string;
     localeHookImportPath: string;
     switcherImportPath: string;
+    runtimeImportPath?: string;
   }
 ): Promise<{ updated: boolean; devSwitcherInjected: boolean }> {
   const source = await readTextFile(filePath);
@@ -577,7 +629,9 @@ async function wireNextAppRouterLayout(
           {
             adapterName: options.adapterName,
             providerComponentName: options.providerComponentName,
-            wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
+            wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName),
+            includeInitialLocale:
+              options.adapterName === "generic" || options.adapterName === "custom"
           }
         )
       ];
@@ -603,11 +657,17 @@ async function wireNextAppRouterLayout(
   if (requiresGeneratedLocaleProvider(options.adapterName)) {
     ensureImport(ast, options.localeHookImportPath, "GlobalyzeLocaleProvider");
   }
+  if (options.runtimeImportPath) {
+    ensureImport(ast, options.runtimeImportPath, "getCurrentLocale");
+  }
 
   ensureImport(ast, options.switcherImportPath, "GlobalyzeLanguageSwitcher");
 
   const output = generate(ast, { retainLines: true }, source);
-  await writeTextFile(filePath, `${output.code}\n`);
+  await writeTextFile(
+    filePath,
+    await formatGeneratedFileContents(filePath, `${output.code}\n`)
+  );
   return { updated, devSwitcherInjected };
 }
 
@@ -619,6 +679,7 @@ async function wireViteEntry(
     providerComponentName?: string;
     localeHookImportPath: string;
     switcherImportPath: string;
+    runtimeImportPath?: string;
   }
 ): Promise<{ updated: boolean; devSwitcherInjected: boolean }> {
   const source = await readTextFile(filePath);
@@ -664,7 +725,9 @@ async function wireViteEntry(
           {
             adapterName: options.adapterName,
             providerComponentName: options.providerComponentName,
-            wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName)
+            wrapWithLocaleProvider: requiresGeneratedLocaleProvider(options.adapterName),
+            includeInitialLocale:
+              options.adapterName === "generic" || options.adapterName === "custom"
           }
         )
       ];
@@ -690,11 +753,17 @@ async function wireViteEntry(
   if (requiresGeneratedLocaleProvider(options.adapterName)) {
     ensureImport(ast, options.localeHookImportPath, "GlobalyzeLocaleProvider");
   }
+  if (options.runtimeImportPath) {
+    ensureImport(ast, options.runtimeImportPath, "getCurrentLocale");
+  }
 
   ensureImport(ast, options.switcherImportPath, "GlobalyzeLanguageSwitcher");
 
   const output = generate(ast, { retainLines: true }, source);
-  await writeTextFile(filePath, `${output.code}\n`);
+  await writeTextFile(
+    filePath,
+    await formatGeneratedFileContents(filePath, `${output.code}\n`)
+  );
   return { updated, devSwitcherInjected };
 }
 
@@ -914,6 +983,11 @@ export async function setupRuntimeProvider(
       entry.filePath,
       artifacts.localeHookPath
     ),
+    ...(adapter.name === "generic" || adapter.name === "custom"
+      ? {
+          runtimeImportPath: config.translationImportPath
+        }
+      : {}),
     switcherImportPath: buildRelativeImportPath(
       entry.filePath,
       artifacts.switcherPath

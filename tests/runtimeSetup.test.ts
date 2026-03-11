@@ -63,9 +63,27 @@ describe("runtime setup", () => {
     );
     await writeFile(path.join(remixRoot, "app", "root.tsx"), "export default function Root() { return null; }\n");
 
+    const tanStackRoot = await mkdtemp(path.join(tmpdir(), "globalyze-tanstack-"));
+    tempDirectories.push(tanStackRoot);
+    await mkdir(path.join(tanStackRoot, "src", "app"), { recursive: true });
+    await writeFile(
+      path.join(tanStackRoot, "package.json"),
+      JSON.stringify({
+        dependencies: {
+          "@tanstack/start": "1.0.0",
+          react: "19.0.0"
+        }
+      })
+    );
+    await writeFile(
+      path.join(tanStackRoot, "src", "app", "__root.tsx"),
+      "export default function Root() { return null; }\n"
+    );
+
     expect(await detectFramework(nextRoot)).toBe("next-app-router");
     expect(await detectFramework(viteRoot)).toBe("vite-react");
     expect(await detectFramework(remixRoot)).toBe("remix");
+    expect(await detectFramework(tanStackRoot)).toBe("tanstack-start");
   });
 
   it("injects a provider into a Next.js app router layout when safe", async () => {
@@ -172,7 +190,9 @@ describe("runtime setup", () => {
     const updatedLayout = await readFile(layoutPath, "utf8");
 
     expect(result.wired).toBe(true);
-    expect(updatedLayout).toContain("<GlobalyzeLocaleProvider>");
+    expect(updatedLayout).toContain("<GlobalyzeLocaleProvider initialLocale={getCurrentLocale()}>");
+    expect(updatedLayout).toContain("initialLocale={getCurrentLocale()}");
+    expect(updatedLayout).toContain('import { getCurrentLocale } from "@/i18n";');
     expect(updatedLayout).toContain("<TooltipProvider>");
     expect(updatedLayout).toContain("<PreferencesStoreProvider>");
     expect(updatedLayout).toContain("GlobalyzeLanguageSwitcher");
@@ -334,6 +354,46 @@ describe("runtime setup", () => {
     expect(result.wired).toBe(true);
     expect(updatedRoot).toContain("GlobalyzeLocaleProvider");
     expect(updatedRoot).toContain("GlobalyzeLanguageSwitcher");
+  });
+
+  it("injects a provider into a TanStack Start root entry when safe", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-tanstack-wire-"));
+    tempDirectories.push(rootDir);
+
+    const rootPath = path.join(rootDir, "src", "app", "__root.tsx");
+    await mkdir(path.dirname(rootPath), { recursive: true });
+    await writeFile(
+      path.join(rootDir, "package.json"),
+      JSON.stringify({
+        dependencies: { "@tanstack/start": "1.0.0", react: "19.0.0" }
+      })
+    );
+    await writeFile(
+      rootPath,
+      [
+        'import { Outlet } from "@tanstack/start";',
+        "",
+        "export default function Root() {",
+        "  return <Outlet />;",
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    const config = createTestConfig(rootDir, {
+      i18nAdapter: "generic"
+    });
+    const result = await setupRuntimeProvider(
+      config,
+      { name: "bun", installCommand: "bun add" },
+      { confirmWiring: true }
+    );
+    const updatedRoot = await readFile(rootPath, "utf8");
+
+    expect(result.wired).toBe(true);
+    expect(updatedRoot).toContain("GlobalyzeLocaleProvider");
+    expect(updatedRoot).toContain("GlobalyzeLanguageSwitcher");
+    expect(updatedRoot).toContain('import { getCurrentLocale } from "@/i18n";');
   });
 
   it("generates a generic locale hook with config-driven languages", async () => {
