@@ -426,7 +426,9 @@ export async function writeTextFile(
   contents: string
 ): Promise<void> {
   await fs.ensureDir(path.dirname(filePath));
-  await fs.writeFile(filePath, contents, "utf8");
+  const temporaryPath = `${filePath}.globalyze-tmp`;
+  await fs.writeFile(temporaryPath, contents, "utf8");
+  await fs.move(temporaryPath, filePath, { overwrite: true });
 }
 
 export async function pathExists(filePath: string): Promise<boolean> {

@@ -1,6 +1,12 @@
+import path from "node:path";
 import { describe, expect, it } from "bun:test";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
-import { extractStringsFromSource } from "../src/extractor/stringExtractor";
+import {
+  analyzeExtractableStringsFromFiles,
+  extractStringsFromSource
+} from "../src/extractor/stringExtractor";
 
 describe("extractStringsFromSource", () => {
   it("extracts sidebar and tab labels from UI config objects", () => {
@@ -122,5 +128,39 @@ describe("extractStringsFromSource", () => {
       "Mona"
     ]);
     expect(extracted.every((entry) => entry.kind === "object-property")).toBe(true);
+  });
+
+  it("skips json files that already have a generated Globalyze sidecar", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-extract-"));
+
+    try {
+      const jsonPath = path.join(
+        rootDir,
+        "src",
+        "app",
+        "dashboard",
+        "default",
+        "_components",
+        "data.json"
+      );
+      const sidecarPath = jsonPath.replace(/\.json$/, ".globalyze.ts");
+      await mkdir(path.dirname(jsonPath), { recursive: true });
+      await writeFile(
+        jsonPath,
+        `${JSON.stringify([{ header: "Cover page", status: "Done" }], null, 2)}\n`
+      );
+      await writeFile(
+        sidecarPath,
+        'import { t } from "@/i18n";\nexport default [{ header: t("default.data.cover_page") }];\n'
+      );
+
+      const analysis = await analyzeExtractableStringsFromFiles([jsonPath], {
+        projectRoot: rootDir
+      });
+
+      expect(analysis.strings).toEqual([]);
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
   });
 });

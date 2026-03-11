@@ -398,18 +398,34 @@ export async function writeLocaleFiles(
   files: readonly LocaleFileContent[],
   format: LocaleStructureConfig["format"]
 ): Promise<void> {
-  await fs.remove(directoryPath);
   await fs.ensureDir(directoryPath);
+  const desiredFileNames = new Set(files.map((file) => file.fileName));
 
   for (const file of files) {
     const filePath = path.join(directoryPath, file.fileName);
+    const tempFilePath = `${filePath}.globalyze-tmp`;
     const contents =
       format === "json"
         ? formatJson(file.entries)
         : format === "ts"
           ? formatTs(file.entries, file.fileName)
           : formatJs(file.entries, file.fileName);
-    await fs.writeFile(filePath, contents, "utf8");
+    await fs.writeFile(tempFilePath, contents, "utf8");
+    await fs.move(tempFilePath, filePath, { overwrite: true });
+  }
+
+  const existingFiles = await fs.readdir(directoryPath);
+
+  for (const fileName of existingFiles) {
+    if (desiredFileNames.has(fileName) || fileName.endsWith(".globalyze-tmp")) {
+      continue;
+    }
+
+    if (!/\.(json|js|ts)$/.test(fileName)) {
+      continue;
+    }
+
+    await fs.remove(path.join(directoryPath, fileName));
   }
 }
 

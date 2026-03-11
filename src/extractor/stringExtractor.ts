@@ -189,6 +189,15 @@ async function writeExtractionCache(
   await fs.writeJson(statePaths.extractionCachePath, cache, { spaces: 2 });
 }
 
+async function hasGeneratedJsonSidecar(filePath: string): Promise<boolean> {
+  const basePath = filePath.replace(/\.json$/i, ".globalyze");
+
+  return (
+    (await fs.pathExists(`${basePath}.ts`)) ||
+    (await fs.pathExists(`${basePath}.js`))
+  );
+}
+
 function mayContainExtractableStrings(
   source: string,
   filePath: string,
@@ -645,6 +654,14 @@ export async function analyzeExtractableStringsFromFiles(
 
   for (const filePath of filePaths) {
     const resolvedFilePath = path.resolve(filePath);
+
+    if (
+      resolvedFilePath.endsWith(".json") &&
+      (await hasGeneratedJsonSidecar(resolvedFilePath))
+    ) {
+      continue;
+    }
+
     const posixFilePath = toPosixPath(resolvedFilePath);
     const relativeFilePath = options.projectRoot
       ? toPosixPath(path.relative(options.projectRoot, resolvedFilePath))

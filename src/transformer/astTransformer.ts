@@ -1,7 +1,10 @@
+import path from "node:path";
+
 import { parse } from "@babel/parser";
 import generate from "@babel/generator";
 import traverse, { type NodePath } from "@babel/traverse";
 import * as t from "@babel/types";
+import { detectRuntimeArtifactFlavor } from "../runtime/languageArtifacts";
 
 import { resolveI18nAdapter } from "../adapters";
 import type {
@@ -10,7 +13,9 @@ import type {
 } from "../types";
 import { extractDynamicTemplateFromExpression } from "../extractor/dynamicExtractor";
 import {
+  isDataDrivenTranslatablePropertyName,
   isTranslatableAttributeName,
+  isTranslatableObjectPropertyName,
   normalizeUiText,
   shouldExtractObjectProperty
 } from "../extractor/stringExtractor";
@@ -147,7 +152,8 @@ function normalizeStaticTemplateLiteral(node: t.TemplateLiteral): string | null 
 export async function transformFile(
   filePath: string,
   keysByText: ReadonlyMap<string, string>,
-  config: ResolvedGlobalyzeConfig
+  config: ResolvedGlobalyzeConfig,
+  jsonSidecarImports?: ReadonlyMap<string, string>
 ): Promise<FileTransformResult> {
   if (filePath.endsWith(".json")) {
     return {
@@ -158,7 +164,13 @@ export async function transformFile(
   }
 
   const source = await readTextFile(filePath);
-  const transformed = transformSource(filePath, source, keysByText, config);
+  const transformed = transformSource(
+    filePath,
+    source,
+    keysByText,
+    config,
+    jsonSidecarImports
+  );
 
   if (!transformed.updated) {
     return transformed.result;
@@ -173,7 +185,8 @@ export function transformSource(
   filePath: string,
   source: string,
   keysByText: ReadonlyMap<string, string>,
-  config: ResolvedGlobalyzeConfig
+  config: ResolvedGlobalyzeConfig,
+  jsonSidecarImports?: ReadonlyMap<string, string>
 ): {
   result: FileTransformResult;
   updated: boolean;
@@ -247,6 +260,32 @@ export function transformSource(
           state.hasConflictingTranslationBinding = true;
         }
       }
+    },
+    ImportDeclaration(importPath) {
+      const sourceValue = importPath.node.source.value;
+
+      if (
+        typeof sourceValue !== "string" ||
+        !sourceValue.endsWith(".json") ||
+        !sourceValue.startsWith(".")
+      ) {
+        return;
+      }
+
+      const resolvedImportPath = path.resolve(
+        path.dirname(filePath),
+        sourceValue
+      );
+      const replacement = jsonSidecarImports?.get(resolvedImportPath);
+
+      if (!replacement) {
+        return;
+      }
+
+      importPath.node.source = t.stringLiteral(
+        sourceValue.replace(/\.json$/i, ".globalyze")
+      );
+      state.transformed = true;
     },
     JSXText(path) {
       const text = normalizeUiText(path.node.value);
@@ -520,15 +559,177 @@ export function transformSource(
   };
 }
 
+function createObjectPropertyKey(name: string): t.Identifier | t.StringLiteral {
+  return t.isValidIdentifier(name) ? t.identifier(name) : t.stringLiteral(name);
+}
+
+function buildJsonLocalizationExpression(
+  value: unknown,
+  filePath: string,
+  keysByText: ReadonlyMap<string, string>,
+  adapter: ReturnType<typeof resolveI18nAdapter>,
+  propertyName?: string
+): { expression: t.Expression; replacements: number } {
+  if (typeof value === "string") {
+    const normalized = normalizeUiText(value);
+    const isTranslatableProperty =
+      typeof propertyName === "string" &&
+      (isTranslatableObjectPropertyName(propertyName) ||
+        isDataDrivenTranslatablePropertyName(propertyName, filePath));
+    const key = normalized ? keysByText.get(normalized) : undefined;
+
+    if (isTranslatableProperty && key) {
+      return {
+        expression: createTranslationExpression(adapter, key),
+        replacements: 1
+      };
+    }
+
+    return {
+      expression: t.stringLiteral(value),
+      replacements: 0
+    };
+  }
+
+  if (Array.isArray(value)) {
+    const items = value.map((item) =>
+      buildJsonLocalizationExpression(item, filePath, keysByText, adapter)
+    );
+
+    return {
+      expression: t.arrayExpression(items.map((item) => item.expression)),
+      replacements: items.reduce((sum, item) => sum + item.replacements, 0)
+    };
+  }
+
+  if (value === null) {
+    return {
+      expression: t.nullLiteral(),
+      replacements: 0
+    };
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    const literal = t.valueToNode(value);
+
+    if (!t.isExpression(literal)) {
+      throw new GlobalyzeError(`Failed to serialize JSON value for ${filePath}.`);
+    }
+
+    return {
+      expression: literal,
+      replacements: 0
+    };
+  }
+
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).map(
+      ([key, nestedValue]) => {
+        const nested = buildJsonLocalizationExpression(
+          nestedValue,
+          filePath,
+          keysByText,
+          adapter,
+          key
+        );
+
+        return {
+          property: t.objectProperty(
+            createObjectPropertyKey(key),
+            nested.expression
+          ),
+          replacements: nested.replacements
+        };
+      }
+    );
+
+    return {
+      expression: t.objectExpression(entries.map((entry) => entry.property)),
+      replacements: entries.reduce((sum, entry) => sum + entry.replacements, 0)
+    };
+  }
+
+  throw new GlobalyzeError(`Unsupported JSON value encountered in ${filePath}.`);
+}
+
+async function buildJsonSidecarMap(
+  filePaths: readonly string[],
+  keysByText: ReadonlyMap<string, string>,
+  config: ResolvedGlobalyzeConfig
+): Promise<Map<string, string>> {
+  const jsonFiles = filePaths.filter((filePath) => filePath.endsWith(".json"));
+
+  if (jsonFiles.length === 0) {
+    return new Map<string, string>();
+  }
+
+  const flavor = await detectRuntimeArtifactFlavor(config);
+  const extension = flavor === "typescript" ? "ts" : "js";
+  const adapter = resolveI18nAdapter(config);
+
+  if (adapter.canInjectHook || !adapter.importPath) {
+    return new Map<string, string>();
+  }
+
+  const sidecarImports = new Map<string, string>();
+
+  for (const filePath of jsonFiles) {
+    const source = await readTextFile(filePath);
+    const parsed = JSON.parse(source) as unknown;
+    const transformed = buildJsonLocalizationExpression(
+      parsed,
+      filePath,
+      keysByText,
+      adapter
+    );
+    const sidecarFilePath = filePath.replace(/\.json$/i, `.globalyze.${extension}`);
+
+    if (transformed.replacements > 0) {
+      const program = t.program([
+        t.importDeclaration(
+          [
+            t.importSpecifier(
+              t.identifier(adapter.translationFunctionName),
+              t.identifier(adapter.translationFunctionName)
+            )
+          ],
+          t.stringLiteral(adapter.importPath ?? config.translationImportPath)
+        ),
+        t.variableDeclaration("const", [
+          t.variableDeclarator(t.identifier("data"), transformed.expression)
+        ]),
+        t.exportDefaultDeclaration(t.identifier("data"))
+      ]);
+      const contents = `${generate(program, {
+        jsescOption: {
+          minimal: true
+        }
+      }).code}\n`;
+      await writeTextFile(sidecarFilePath, contents);
+      sidecarImports.set(filePath, sidecarFilePath);
+      continue;
+    }
+  }
+
+  return sidecarImports;
+}
+
 export async function transformFiles(
   filePaths: readonly string[],
   keysByText: ReadonlyMap<string, string>,
   config: ResolvedGlobalyzeConfig
 ): Promise<FileTransformResult[]> {
   const results: FileTransformResult[] = [];
+  const jsonSidecarImports = await buildJsonSidecarMap(
+    filePaths,
+    keysByText,
+    config
+  );
 
   for (const filePath of filePaths) {
-    results.push(await transformFile(filePath, keysByText, config));
+    results.push(
+      await transformFile(filePath, keysByText, config, jsonSidecarImports)
+    );
   }
 
   return results;

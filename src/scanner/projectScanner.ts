@@ -14,12 +14,19 @@ export async function scanProjectFiles(
     `**/${directory}/**`,
     `${directory}/**`
   ]);
+  const generatedIgnorePatterns = [
+    "**/*.globalyze.{ts,js}",
+    "**/translations.generated.{ts,js}",
+    "**/GlobalyzeLanguageSwitcher.{tsx,jsx}",
+    "**/useLocale.{ts,tsx,js,jsx}",
+    "**/languageLabels.{ts,js}"
+  ];
 
   const files = await fg([`**/*.{${extensionPattern}}`], {
     cwd: config.sourceDir,
     absolute: true,
     onlyFiles: true,
-    ignore: ignorePatterns,
+    ignore: [...ignorePatterns, ...generatedIgnorePatterns],
     followSymbolicLinks: false
   });
 

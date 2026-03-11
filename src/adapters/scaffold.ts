@@ -10,17 +10,19 @@ export interface LocalAdapterRuntimeResult {
   action: "created" | "updated";
 }
 
-function resolveLocalAdapterModulePath(
+async function resolveLocalAdapterModulePath(
   config: ResolvedGlobalyzeConfig
-): string | null {
+): Promise<string | null> {
   const importPath = config.translationImportPath;
+  const flavor = await detectRuntimeArtifactFlavor(config);
+  const extension = flavor === "typescript" ? "ts" : "js";
 
   if (importPath.startsWith("@/")) {
-    return path.join(config.sourceDir, `${importPath.slice(2)}.ts`);
+    return path.join(config.sourceDir, `${importPath.slice(2)}.${extension}`);
   }
 
   if (importPath.startsWith("./") || importPath.startsWith("../")) {
-    return path.resolve(config.rootDir, `${importPath}.ts`);
+    return path.resolve(config.rootDir, `${importPath}.${extension}`);
   }
 
   return null;
@@ -94,7 +96,7 @@ export async function ensureLocalAdapterRuntime(
     return null;
   }
 
-  const runtimePath = resolveLocalAdapterModulePath(config);
+  const runtimePath = await resolveLocalAdapterModulePath(config);
 
   if (!runtimePath) {
     return null;
@@ -124,12 +126,60 @@ export async function ensureLocalAdapterRuntime(
         "  });",
         "}",
         "",
+        "function readCookieLocale(cookieSource: string | null | undefined): string | null {",
+        "  if (!cookieSource) {",
+        "    return null;",
+        "  }",
+        "",
+        "  const cookies = cookieSource.split(/;\\s*/).filter(Boolean);",
+        '  const match = cookies.find((entry) => entry.startsWith("globalyze.locale="));',
+        '  return match ? decodeURIComponent(match.slice("globalyze.locale".length + 1)) : null;',
+        "}",
+        "",
+        "function readServerCookieLocale(): string | null {",
+        "  if (typeof window !== \"undefined\") {",
+        "    return null;",
+        "  }",
+        "",
+        "  try {",
+        "    const maybeRequire = Function(",
+        "      'return typeof require !== \"undefined\" ? require : null;'",
+        "    )() as ((specifier: string) => unknown) | null;",
+        "",
+        "    if (!maybeRequire) {",
+        "      return null;",
+        "    }",
+        "",
+        "    const nextHeaders = maybeRequire(\"next/headers\") as {",
+        "      cookies?: () => { get: (name: string) => { value?: string } | undefined };",
+        "    };",
+        "    const cookieStore = typeof nextHeaders.cookies === \"function\" ? nextHeaders.cookies() : null;",
+        '    const cookie = cookieStore?.get("globalyze.locale");',
+        '    return typeof cookie?.value === "string" && cookie.value.trim().length > 0 ? cookie.value : null;',
+        "  } catch {",
+        "    return null;",
+        "  }",
+        "}",
+        "",
         "function resolveRuntimeLocale(locale?: string): string {",
         "  if (locale) {",
         "    return locale;",
         "  }",
         "",
+        "  const serverLocale = readServerCookieLocale();",
+        "  if (serverLocale) {",
+        "    return serverLocale;",
+        "  }",
+        "",
         "  if (typeof window !== \"undefined\") {",
+        "    const cookieLocale = readCookieLocale(",
+        '      typeof document !== "undefined" ? document.cookie : null',
+        "    );",
+        "",
+        "    if (cookieLocale) {",
+        "      return cookieLocale;",
+        "    }",
+        "",
         `    return window.localStorage.getItem("globalyze.locale") ?? ${JSON.stringify(config.sourceLocale)};`,
         "  }",
         "",

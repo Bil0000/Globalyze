@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
-import { transformFile } from "../src/transformer/astTransformer";
+import { transformFile, transformFiles } from "../src/transformer/astTransformer";
 import { createTestConfig } from "./testUtils";
 
 describe("transformFile", () => {
@@ -179,6 +179,75 @@ describe("transformFile", () => {
     expect(result.updated).toBe(false);
     expect(updatedSource).toBe(`${originalSource}\n`);
     expect(updatedSource).not.toContain('import { t } from "@/i18n";');
+  });
+
+  it("generates a localized sidecar for json data files and rewrites imports to use it", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-transform-"));
+    tempDirectories.push(rootDir);
+
+    const jsonPath = path.join(
+      rootDir,
+      "src",
+      "app",
+      "dashboard",
+      "default",
+      "_components",
+      "data.json"
+    );
+    const pagePath = path.join(
+      rootDir,
+      "src",
+      "app",
+      "dashboard",
+      "default",
+      "page.tsx"
+    );
+    await mkdir(path.dirname(jsonPath), { recursive: true });
+    await mkdir(path.dirname(pagePath), { recursive: true });
+    await writeFile(
+      jsonPath,
+      `${JSON.stringify(
+        [
+          {
+            header: "Cover page",
+            status: "Done"
+          }
+        ],
+        null,
+        2
+      )}\n`
+    );
+    await writeFile(
+      pagePath,
+      [
+        'import rows from "./_components/data.json";',
+        "",
+        "export default function Page() {",
+        "  return <div>{rows[0]?.header}</div>;",
+        "}",
+        ""
+      ].join("\n")
+    );
+
+    const config = createTestConfig(rootDir);
+    const results = await transformFiles(
+      [jsonPath, pagePath],
+      new Map([
+        ["Cover page", "default.data.cover_page"],
+        ["Done", "default.data.done"]
+      ]),
+      config
+    );
+    const updatedPage = await Bun.file(pagePath).text();
+    const generatedSidecar = await Bun.file(
+      jsonPath.replace(/\.json$/, ".globalyze.ts")
+    ).text();
+
+    expect(results.some((result) => result.filePath === pagePath && result.updated)).toBe(true);
+    expect(updatedPage).toContain('import rows from "./_components/data.globalyze";');
+    expect(generatedSidecar).toContain('import { t } from "@/i18n";');
+    expect(generatedSidecar).toContain('header: t("default.data.cover_page")');
+    expect(generatedSidecar).toContain('status: t("default.data.done")');
   });
 
   it("does not translate date formatting option literals", async () => {

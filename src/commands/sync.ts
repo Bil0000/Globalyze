@@ -206,22 +206,6 @@ export async function executeSyncCommand(
       }),
     () => `Updated locale files in ${config.localesDir}`
   );
-  const refreshedManifests = await logger.step(
-    "Refreshing generated translation manifests",
-    () => refreshGeneratedTranslationManifests(config),
-    (paths) =>
-      paths.length > 0
-        ? `Updated ${String(paths.length)} generated translation manifest${paths.length === 1 ? "" : "s"}`
-        : "No generated translation manifests were found"
-  );
-  const refreshedRuntime = await logger.step(
-    "Refreshing translation runtime module",
-    () => ensureLocalAdapterRuntime(config),
-    (result) =>
-      result
-        ? `${result.action === "created" ? "Created" : "Updated"} translation runtime scaffold at ${result.path}`
-        : "Translation runtime module is already aligned"
-  );
   const references = await logger.step(
     "Refreshing translation graph",
     () =>
@@ -264,6 +248,14 @@ export async function executeSyncCommand(
         ? `Finalized ${String(paths.length)} generated translation manifest${paths.length === 1 ? "" : "s"}`
         : "No generated translation manifests were found"
   );
+  const refreshedRuntime = await logger.step(
+    "Refreshing translation runtime module",
+    () => ensureLocalAdapterRuntime(config),
+    (result) =>
+      result
+        ? `${result.action === "created" ? "Created" : "Updated"} translation runtime scaffold at ${result.path}`
+        : "Translation runtime module is already aligned"
+  );
 
   if (translation.usedMockTranslations) {
     logger.warn(
@@ -274,13 +266,7 @@ export async function executeSyncCommand(
   if (localeSync.removed.length > 0) {
     logger.info(`Removed stale locales: ${localeSync.removed.join(", ")}`);
   }
-  if (refreshedManifests.length > 0) {
-    logger.info(`Refreshed: ${refreshedManifests.join(", ")}`);
-  }
-  if (
-    finalizedManifests.length > 0 &&
-    finalizedManifests.join(", ") !== refreshedManifests.join(", ")
-  ) {
+  if (finalizedManifests.length > 0) {
     logger.info(`Finalized: ${finalizedManifests.join(", ")}`);
   }
   const touchedArtifacts = [
