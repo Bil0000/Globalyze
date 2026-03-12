@@ -13,6 +13,8 @@ globalyze globalize
 
 And your app becomes multilingual.
 
+<video src="assets/globalyze-launch.mp4" controls width="640"></video>
+
 ---
 
 ## Example
