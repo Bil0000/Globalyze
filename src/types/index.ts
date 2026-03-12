@@ -243,6 +243,7 @@ export interface FullRunResult {
 
 export interface TransformPreparationResult {
   files: string[];
+  referenceFiles: string[];
   rawStrings: ExtractedString[];
   keyAssignments: KeyAssignment[];
   sourceAssignments: LocaleKeyReference[];

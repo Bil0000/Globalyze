@@ -7,7 +7,7 @@ import { executeGlobalizeCommand } from "../src/commands/globalize";
 import { executeLockCommand, executeUnlockCommand } from "../src/commands/lock";
 import { executeOwnerCommand } from "../src/commands/owner";
 import { executeSyncCommand } from "../src/commands/sync";
-import { readLocaleEntries } from "../src/i18n/localeManager";
+import { readLocaleDictionary, readLocaleEntries } from "../src/i18n/localeManager";
 import { loadGlobalyzeConfig, writeTextFile } from "../src/utils/fileUtils";
 
 describe("sync-related commands", () => {
@@ -376,6 +376,79 @@ describe("sync-related commands", () => {
     expect(manifest).not.toContain("socialPage.js");
     expect(frenchBucketContents).toContain('"social.button.google": "Continue with Google"');
     expect(frenchBucketContents).toContain('"Checkout"');
+  });
+
+  it("rebuilds missing target locale buckets from generated sidecar translation references during sync", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-sync-sidecar-"));
+    tempDirectories.push(rootDir);
+    process.chdir(rootDir);
+    await mkdir(path.join(rootDir, "src"), { recursive: true });
+    await mkdir(path.join(rootDir, "locales", "en"), { recursive: true });
+    await writeTextFile(
+      path.join(rootDir, "globalyze.config.ts"),
+      [
+        "export default {",
+        '  sourceDir: "src",',
+        '  localesDir: "locales",',
+        '  languages: ["en", "fr"],',
+        '  ignore: ["node_modules", "dist", "build", ".next", ".git"],',
+        '  localeStructure: { format: "js", structure: "multiple", splitStrategy: "page", commonFile: true, naming: "camel", unresolvedOwnership: "common" },',
+        "  cacheTranslations: true,",
+        "  dynamicExtraction: false,",
+        '  i18nAdapter: "generic",',
+        "  translationInstructions: [],",
+        '  sourceLocale: "en",',
+        '  openAiModel: "gpt-4o-mini",',
+        '  geminiModel: "gemini-2.5-flash-lite",',
+        "  aiBatchSize: 20,",
+        '  translationImportPath: "@/i18n",',
+        '  translationFunctionName: "t",',
+        "  governance: { enabled: false, failOnLockedChange: true, failOnApprovalRequiredChange: false }",
+        "};",
+        ""
+      ].join("\n")
+    );
+    await writeTextFile(
+      path.join(rootDir, "src", "page.tsx"),
+      [
+        'import rows from "./data.globalyze";',
+        "export default function Page() {",
+        "  return <div>{rows[0]?.header}</div>;",
+        "}",
+        ""
+      ].join("\n")
+    );
+    await writeTextFile(
+      path.join(rootDir, "src", "data.globalyze.ts"),
+      [
+        'import { t } from "@/i18n";',
+        "const rows = [",
+        '  { header: t("default.data.cover_page"), status: t("default.data.done") }',
+        "];",
+        "export default rows;",
+        ""
+      ].join("\n")
+    );
+    await writeTextFile(
+      path.join(rootDir, "locales", "en", "defaultPage.js"),
+      [
+        'export const defaultPage = {',
+        '  "default.data.cover_page": "Cover Page",',
+        '  "default.data.done": "Done"',
+        "};",
+        ""
+      ].join("\n")
+    );
+
+    await executeSyncCommand();
+
+    const englishLocale = await readLocaleDictionary(await loadGlobalyzeConfig(), "en");
+    const frenchLocale = await readLocaleDictionary(await loadGlobalyzeConfig(), "fr");
+
+    expect(englishLocale["default.data.cover_page"]).toBe("Cover Page");
+    expect(englishLocale["default.data.done"]).toBe("Done");
+    expect(frenchLocale["default.data.cover_page"]).toBe("Cover Page");
+    expect(frenchLocale["default.data.done"]).toBe("Done");
   });
 
   it("creates runtime guidance during globalize for hook-based adapters", async () => {

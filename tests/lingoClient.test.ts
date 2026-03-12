@@ -7,6 +7,7 @@ import fs from "fs-extra";
 import { syncLocaleFiles, readLocaleDictionary } from "../src/i18n/localeManager";
 import { extractTranslationKeyReferencesFromFiles } from "../src/extractor/translationKeyExtractor";
 import { translateLocales } from "../src/lingo/lingoClient";
+import { writeTranslationCache } from "../src/cache/translationCache";
 import { createTestConfig } from "./testUtils";
 
 const localizeObjectMock = mock(
@@ -87,6 +88,43 @@ describe("translateLocales", () => {
     expect(locale).toEqual({
       "checkout.buy_button": "Buy now"
     });
+  });
+
+  it("reports Lingo.dev outages explicitly for timeout and gateway failures", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-lingo-outage-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      languages: ["en", "fr"],
+      localeStructure: {
+        format: "json",
+        structure: "single",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "dot",
+        unresolvedOwnership: "common"
+      }
+    });
+
+    await syncLocaleFiles(config, {
+      "checkout.buy_button": "Buy now"
+    });
+    process.env.LINGO_API_KEY = "test-key";
+    localizeObjectMock.mockImplementation(
+      (): Promise<Record<string, string>> =>
+        Promise.reject(
+          new Error(
+            "Server error (502): Bad Gateway. This may be due to temporary service issues."
+          )
+        )
+    );
+
+    const result = await translateLocales(config);
+
+    expect(result.usedMockTranslations).toBe(true);
+    expect(result.skippedReason).toContain("Lingo.dev appears to be temporarily unavailable for fr");
+    expect(result.skippedReason).toContain("not a Globalyze issue");
+    expect(result.skippedReason).toContain("English source values were copied until the service recovers");
   });
 
   it("passes translation instructions as Lingo hints", async () => {
@@ -280,6 +318,115 @@ describe("translateLocales", () => {
     expect(locale).toEqual({
       "checkout.buy_button": "Acheter",
       "checkout.cancel_button": "Annuler"
+    });
+  });
+
+  it("retranslates stale English fallback values already present in target locales", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-lingo-refresh-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      languages: ["en", "fr"],
+      localeStructure: {
+        format: "json",
+        structure: "single",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "dot",
+        unresolvedOwnership: "common"
+      }
+    });
+
+    await syncLocaleFiles(config, {
+      "dashboard.welcome_back": "Welcome back",
+      "dashboard.get_help": "Get Help"
+    });
+    await fs.writeJson(
+      path.join(config.localesDir, "fr", "fr.json"),
+      {
+        "dashboard.welcome_back": "Welcome back",
+        "dashboard.get_help": "Get Help"
+      },
+      { spaces: 2 }
+    );
+    process.env.LINGO_API_KEY = "test-key";
+    localizeObjectMock.mockImplementation(
+      (
+        pendingSourceLocale: Record<string, string>
+      ): Promise<Record<string, string>> =>
+        Promise.resolve({
+          ...pendingSourceLocale,
+          "dashboard.welcome_back": "Bon retour",
+          "dashboard.get_help": "Obtenir de l'aide"
+        })
+    );
+
+    const result = await translateLocales(config);
+    const locale = await readLocaleDictionary(config, "fr");
+
+    expect(result.usedMockTranslations).toBe(false);
+    expect(localizeObjectCalls).toHaveLength(1);
+    expect(localizeObjectCalls[0]?.sourceLocale).toEqual({
+      "dashboard.welcome_back": "Welcome back",
+      "dashboard.get_help": "Get Help"
+    });
+    expect(locale).toEqual({
+      "dashboard.welcome_back": "Bon retour",
+      "dashboard.get_help": "Obtenir de l'aide"
+    });
+  });
+
+  it("ignores stale English fallback values already stored in translation cache", async () => {
+    const rootDir = await mkdtemp(path.join(tmpdir(), "globalyze-lingo-cache-refresh-"));
+    tempDirectories.push(rootDir);
+
+    const config = createTestConfig(rootDir, {
+      languages: ["en", "fr"],
+      localeStructure: {
+        format: "json",
+        structure: "single",
+        splitStrategy: "page",
+        commonFile: false,
+        naming: "dot",
+        unresolvedOwnership: "common"
+      }
+    });
+
+    await syncLocaleFiles(config, {
+      "dashboard.welcome_back": "Welcome back",
+      "dashboard.get_help": "Get Help"
+    });
+    await writeTranslationCache(
+      {
+        "Welcome back": { fr: "Welcome back" },
+        "Get Help": { fr: "Get Help" }
+      },
+      rootDir
+    );
+    process.env.LINGO_API_KEY = "test-key";
+    localizeObjectMock.mockImplementation(
+      (
+        pendingSourceLocale: Record<string, string>
+      ): Promise<Record<string, string>> =>
+        Promise.resolve({
+          ...pendingSourceLocale,
+          "dashboard.welcome_back": "Bon retour",
+          "dashboard.get_help": "Obtenir de l'aide"
+        })
+    );
+
+    const result = await translateLocales(config);
+    const locale = await readLocaleDictionary(config, "fr");
+
+    expect(result.usedMockTranslations).toBe(false);
+    expect(localizeObjectCalls).toHaveLength(1);
+    expect(localizeObjectCalls[0]?.sourceLocale).toEqual({
+      "dashboard.welcome_back": "Welcome back",
+      "dashboard.get_help": "Get Help"
+    });
+    expect(locale).toEqual({
+      "dashboard.welcome_back": "Bon retour",
+      "dashboard.get_help": "Obtenir de l'aide"
     });
   });
 });

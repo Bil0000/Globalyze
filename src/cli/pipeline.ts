@@ -15,7 +15,10 @@ import {
   buildSourceLocaleFromReferences
 } from "../i18n/localeManager";
 import { translateLocales } from "../lingo/lingoClient";
-import { scanProjectFiles } from "../scanner/projectScanner";
+import {
+  scanProjectFiles,
+  scanProjectReferenceFiles
+} from "../scanner/projectScanner";
 import { transformFiles } from "../transformer/astTransformer";
 import type {
   ExtractedString,
@@ -79,6 +82,7 @@ export async function prepareTransformProject(
   config: ResolvedGlobalyzeConfig
 ): Promise<TransformPreparationResult> {
   const files = await scanProjectFiles(config);
+  const referenceFiles = await scanProjectReferenceFiles(config);
   const analysis = await analyzeExtractableStringsFromFiles(files, {
     projectRoot: config.rootDir,
     includeDynamic: config.dynamicExtraction
@@ -108,12 +112,12 @@ export async function prepareTransformProject(
   const existingTranslationKeys =
     rawStrings.length === 0
       ? await extractTranslationKeysFromFiles(
-          files,
+          referenceFiles,
           config.translationFunctionName
         )
       : [];
   const sourceAssignments = await extractTranslationKeyReferencesFromFiles(
-    files,
+    referenceFiles,
     config.translationFunctionName
   );
 
@@ -163,6 +167,7 @@ export async function prepareTransformProject(
 
   return {
     files,
+    referenceFiles,
     rawStrings: [...rawStrings, ...normalizedDynamicStrings],
     keyAssignments,
     sourceAssignments: mergedSourceAssignments,

@@ -74,7 +74,11 @@ export async function getCachedTranslations(
   for (const [key, text] of Object.entries(sourceLocale)) {
     const cached = cache[text]?.[language];
 
-    if (typeof cached === "string" && cached.trim().length > 0) {
+    if (
+      typeof cached === "string" &&
+      cached.trim().length > 0 &&
+      cached.trim() !== text.trim()
+    ) {
       translations[key] = cached;
       hits += 1;
     }
@@ -98,7 +102,11 @@ export async function storeCachedTranslations(
   for (const [key, sourceText] of Object.entries(sourceLocale)) {
     const translated = translatedLocale[key];
 
-    if (typeof translated !== "string" || translated.trim().length === 0) {
+    if (
+      typeof translated !== "string" ||
+      translated.trim().length === 0 ||
+      translated.trim() === sourceText.trim()
+    ) {
       continue;
     }
 

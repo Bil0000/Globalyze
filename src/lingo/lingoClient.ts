@@ -20,7 +20,7 @@ import {
   writeLocaleDictionary
 } from "../i18n/localeManager";
 import { extractTranslationKeyReferencesFromFiles } from "../extractor/translationKeyExtractor";
-import { scanProjectFiles } from "../scanner/projectScanner";
+import { scanProjectReferenceFiles } from "../scanner/projectScanner";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -60,12 +60,50 @@ function buildTranslationHints(
   );
 }
 
+function isReusableExistingTranslation(
+  sourceValue: string,
+  existingValue: unknown
+): existingValue is string {
+  if (typeof existingValue !== "string") {
+    return false;
+  }
+
+  const trimmedExistingValue = existingValue.trim();
+
+  if (trimmedExistingValue.length === 0) {
+    return false;
+  }
+
+  return trimmedExistingValue !== sourceValue.trim();
+}
+
+function formatLingoFailure(language: string, reason: string): string {
+  const normalizedReason = reason.trim();
+  const lowerReason = normalizedReason.toLowerCase();
+  const looksLikeLingoOutage =
+    lowerReason.includes("502") ||
+    lowerReason.includes("503") ||
+    lowerReason.includes("504") ||
+    lowerReason.includes("bad gateway") ||
+    lowerReason.includes("cloudflare") ||
+    lowerReason.includes("host error") ||
+    lowerReason.includes("timed out") ||
+    lowerReason.includes("timeout") ||
+    lowerReason.includes("temporary service issues");
+
+  if (looksLikeLingoOutage) {
+    return `Lingo.dev appears to be temporarily unavailable for ${language}: ${normalizedReason}. This looks like a Lingo.dev service issue, not a Globalyze issue. English source values were copied until the service recovers.`;
+  }
+
+  return `Lingo.dev translation failed for ${language}: ${normalizedReason}. English source values were copied instead.`;
+}
+
 export async function translateLocales(
   config: ResolvedGlobalyzeConfig
 ): Promise<TranslationResult> {
   await ensureLocaleCoverageReady(config);
   const sourceLocale = await readLocaleDictionary(config, config.sourceLocale);
-  const files = await scanProjectFiles(config);
+  const files = await scanProjectReferenceFiles(config);
   const sourceAssignments =
     files.length > 0
       ? await extractTranslationKeyReferencesFromFiles(
@@ -130,10 +168,10 @@ export async function translateLocales(
           ? await getCachedTranslations(sourceLocale, language, config.rootDir)
           : { translations: {}, hits: 0 };
         const reusableTranslations = Object.fromEntries(
-          Object.entries(sourceLocale).flatMap(([key]) => {
+          Object.entries(sourceLocale).flatMap(([key, sourceValue]) => {
             const existingValue = existingLocale[key];
 
-            return typeof existingValue === "string" && existingValue.trim().length > 0
+            return isReusableExistingTranslation(sourceValue, existingValue)
               ? [[key, existingValue] as const]
               : [];
           })
@@ -204,7 +242,7 @@ export async function translateLocales(
           language,
           cacheHits: 0,
           cacheWrites: 0,
-          fallbackWarning: `Lingo.dev translation failed for ${language}: ${reason}. English source values were copied instead.`
+          fallbackWarning: formatLingoFailure(language, reason)
         };
       }
     }

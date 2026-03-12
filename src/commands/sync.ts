@@ -278,7 +278,7 @@ export async function executeSyncCommand(
     "Refreshing translation graph",
     () =>
       extractTranslationKeyReferencesFromFiles(
-        prepared.files,
+        prepared.referenceFiles,
         config.translationFunctionName
       ),
     (result) => `Mapped ${String(result.length)} translation key references`
