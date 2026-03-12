@@ -72,8 +72,6 @@ In practice, Globalyze uses Lingo.dev for:
 - re-running translation on incremental project updates
 - keeping translation automation inside `globalize` and `sync`
 
-If Lingo.dev is temporarily unavailable, Globalyze warns clearly in the terminal and falls back to English source values until the service recovers.
-
 ## Why Globalyze
 
 - Automatic source extraction from React/Next.js-style codebases
@@ -86,48 +84,6 @@ If Lingo.dev is temporarily unavailable, Globalyze warns clearly in the terminal
 - OCR-based screenshot review for missing strings
 - AI skill support for agent workflows
 - Built-in update checks and one-command upgrades
-
-## Visual Placeholders
-
-Add visuals in these spots later.
-
-### Placeholder 1: Hero Demo
-
-Recommended visual:
-- short GIF or screenshot showing a React file before `globalize` and after `globalize`
-- include generated locale files beside the transformed source
-
-### Placeholder 2: CLI Workflow
-
-Recommended visual:
-- terminal screenshot of:
-  - `globalyze init`
-  - `globalyze globalize`
-  - `globalyze sync`
-
-### Placeholder 3: Runtime Wiring
-
-Recommended visual:
-- screenshot of generated runtime files:
-  - `src/i18n.ts`
-  - `src/i18n/useLocale.*`
-  - `src/components/GlobalyzeLanguageSwitcher.*`
-  - `src/lib/i18n/translations.generated.*`
-
-### Placeholder 4: Audit / Analyze
-
-Recommended visual:
-- split screenshot of:
-  - `globalyze audit`
-  - `globalyze analyze`
-
-### Placeholder 5: In-App Result
-
-Recommended visual:
-- app UI showing:
-  - translated interface
-  - generated language switcher
-  - per-page translated content
 
 ## Supported App Setups
 
