@@ -53,6 +53,16 @@ Install Globalyze:
 bun add -g github:Bil0000/Globalyze
 ```
 
+Configure environment variables in `.env` (see [Environment Variables](#environment-variables) below) before initializing:
+
+```bash
+OPENAI_API_KEY=your_openai_key
+GEMINI_API_KEY=your_gemini_key
+LINGO_API_KEY=your_lingo_key
+OPENAI_API_KEY_2=your_second_openai_key # Optional
+GEMINI_API_KEY_2=your_second_gemini_key # Optional
+```
+
 Initialize your project:
 
 ```bash
@@ -70,6 +80,20 @@ Keep translations updated later:
 ```bash
 globalyze sync
 ```
+
+---
+
+# AI Skill
+
+Globalyze includes an AI skill for agent workflows.
+
+Install:
+
+```bash
+npx skills add Bil0000/Globalyze --skill globalyze
+```
+
+This enables Cursor / Codex / AI agents to use the CLI correctly.
 
 ---
 
@@ -352,20 +376,6 @@ Globalyze is designed for large codebases:
 The first `globalize` run is the heaviest operation.
 
 Later `sync` runs are much faster.
-
----
-
-# AI Skill
-
-Globalyze includes an AI skill for agent workflows.
-
-Install:
-
-```bash
-npx skills add Bil0000/Globalyze --skill globalyze
-```
-
-This enables Cursor / Codex / AI agents to use the CLI correctly.
 
 ---
 
