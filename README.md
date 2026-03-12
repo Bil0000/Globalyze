@@ -363,6 +363,52 @@ Developers can place the switcher anywhere in the UI.
 
 ---
 
+# CI/CD
+
+Globalyze includes a GitHub Action that runs on every pull request. You can copy it directly from this repo, it works out of the box on your project.
+
+## Setup
+
+1. **Copy the workflow file** into your repo:
+
+   ```bash
+   mkdir -p .github/workflows
+   curl -o .github/workflows/globalyze.yml https://raw.githubusercontent.com/Bil0000/Globalyze/main/.github/workflows/globalyze.yml
+   ```
+
+   Or manually copy [`.github/workflows/globalyze.yml`](.github/workflows/globalyze.yml) into your project.
+
+2. **Add repository secrets** (Settings → Secrets and variables → Actions):
+
+   | Secret | Purpose |
+   |--------|---------|
+   | `GLOBALYZE_OPENAI_API_KEY` | OpenAI API key for translation |
+   | `GLOBALYZE_GEMINI_API_KEY` | Gemini API key (fallback) |
+   | `GLOBALYZE_LINGO_API_KEY` | Lingo.dev API key for automated translation |
+
+3. **Add a repository variable** (Settings → Secrets and variables → Actions → Variables):
+
+   | Variable | Value |
+   |----------|-------|
+   | `GLOBALYZE_INSTALL_SOURCE` | `github:Bil0000/Globalyze` |
+
+   This tells the workflow where to install Globalyze from. If you use a fork or a different install source, set it accordingly.
+
+## What It Does
+
+On every pull request, the workflow:
+
+- Installs Globalyze and runs `globalyze sync` to update locale files
+- Commits and pushes any translation changes back to the PR branch (so reviewers see up-to-date translations)
+- Runs `globalyze scan --fail-on-findings` to check for hardcoded UI strings
+- Runs `globalyze sync --check` to verify locale coverage
+
+If the scan finds hardcoded strings or coverage is missing, the workflow fails—keeping your localization in sync with CI.
+
+**Note:** For pull requests from forks, the workflow cannot push commits. It will still run the sync and checks, but you'll need to run `globalyze sync` locally to apply fixes.
+
+---
+
 # Performance
 
 Globalyze is designed for large codebases:
