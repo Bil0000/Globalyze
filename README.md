@@ -13,7 +13,7 @@ globalyze globalize
 
 And your app becomes multilingual.
 
-[![Watch the demo](https://img.youtube.com/vi/gs60JN3PTN4/maxresdefault.jpg)](https://youtu.be/gs60JN3PTN4)
+[![Watch the demo](https://img.youtube.com/vi/gs60JN3PTN4/maxresdefault.jpg)](https://youtu.be/NVRl0Jfc9Ig)
 
 ---
 
